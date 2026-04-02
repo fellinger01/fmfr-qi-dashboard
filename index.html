@@ -2616,7 +2616,10 @@ function submitScorecard() {
 
   if (lsStillNeeded) {
     const goLS = confirm('\nThis case required L&S transport. An L&S Scorecard review is also required.\n\nSwitch to the L&S Scorecard now?');
-    if (goLS) { switchSCType('ls'); return; }
+    if (goLS) {
+      switchSCType('ls');
+      return; // return early — do NOT auto-close, L&S review still needed
+    }
   }
 
   // Refresh everything
@@ -2641,7 +2644,10 @@ function submitScorecard() {
   }
   if (currentUser.role !== 'coordinator') initMyCases();
   // Auto-close scorecard after successful submission
-  setTimeout(function() { closeScorecard(); }, 400);
+  // Only auto-close if no L&S review is still pending
+  if (!lsStillNeeded) {
+    setTimeout(function() { closeScorecard(); }, 400);
+  }
 }
 
 
