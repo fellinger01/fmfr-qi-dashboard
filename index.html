@@ -253,19 +253,23 @@ tr:hover td{background:var(--surface2)}
   <div id="overviewAlerts"></div>
 
   <div class="sec-label" style="margin-top:0" id="ov-period-label">Period Summary — No data loaded</div>
-  <div class="stat-grid">
+  <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
     <div class="stat-card stat-card-click" onclick="openStatDrill('all')" title="View all incidents"><div class="stat-label">TOTAL INCIDENTS</div><div class="stat-value c-o" id="ov-total-val">0</div><div class="stat-sub" id="ov-total-sub">No data — import ESO CSVs to begin</div></div>
-    <div class="stat-card stat-card-click" onclick="openStatDrill('review')" title="View all cases for review"><div class="stat-label">CASES FOR REVIEW</div><div class="stat-value c-b" id="ov-review-val">0</div><div class="stat-sub" id="ov-review-sub">No cases loaded</div></div>
-    <div class="stat-card stat-card-click" onclick="openStatDrill('completed')" title="View completed reviews"><div class="stat-label">COMPLETED</div><div class="stat-value c-g" id="ov-done-val">0</div><div class="stat-sub" id="ov-done-sub">0% completion this period</div></div>
-    <div class="stat-card stat-card-click" onclick="openStatDrill('pending')" title="View pending reviews"><div class="stat-label">PENDING</div><div class="stat-value c-y" id="ov-pend-val">0</div><div class="stat-sub" id="ov-pend-sub">No cases loaded</div></div>
+    <div class="stat-card stat-card-click" onclick="openStatDrill('ls-response')" title="View L&amp;S response runs"><div class="stat-label">L&amp;S RESPONSE RUNS</div><div class="stat-value c-b" id="ov-ls-resp-val">0</div><div class="stat-sub" id="ov-ls-resp-sub">Responded lights &amp; sirens</div></div>
+    <div class="stat-card stat-card-click" onclick="openStatDrill('ls')" title="View L&amp;S transport cases"><div class="stat-label">L&amp;S TRANSPORT RUNS</div><div class="stat-value c-r" id="ov-ls-val">0</div><div class="stat-sub" id="ov-ls-sub">No L&amp;S cases loaded</div></div>
+    <div class="stat-card" title="% of transports using L&amp;S"><div class="stat-label">% TRANSPORTS WITH L&amp;S</div><div class="stat-value c-y" id="ov-ls-pct-val">0%</div><div class="stat-sub" id="ov-ls-pct-sub">Of all transports this period</div></div>
   </div>
-  <div class="stat-row2">
-    <div class="stat-card stat-card-click" onclick="openStatDrill('mandatory')" title="View mandatory review cases"><div class="stat-label">MANDATORY 100%</div><div class="stat-value c-r" id="ov-mand-val">0</div><div class="stat-sub" id="ov-mand-sub">Policy v5 §6.1 triggers</div></div>
+  <div class="stat-row2" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat-card stat-card-click" onclick="openStatDrill('review')" title="View all cases for review"><div class="stat-label">CASES FOR REVIEW</div><div class="stat-value c-b" id="ov-review-val">0</div><div class="stat-sub" id="ov-review-sub">No cases loaded</div></div>
+    <div class="stat-card stat-card-click" onclick="openStatDrill('completed')" title="View completed reviews"><div class="stat-label">COMPLETED REVIEWS</div><div class="stat-value c-g" id="ov-done-val">0</div><div class="stat-sub" id="ov-done-sub">0% completion this period</div></div>
+    <div class="stat-card stat-card-click" onclick="openStatDrill('pending')" title="View pending reviews"><div class="stat-label">PENDING REVIEWS</div><div class="stat-value c-y" id="ov-pend-val">0</div><div class="stat-sub" id="ov-pend-sub">No cases loaded</div></div>
+    <div class="stat-card stat-card-click" onclick="openStatDrill('mandatory')" title="View mandatory review cases"><div class="stat-label">MANDATORY REVIEWS</div><div class="stat-value c-r" id="ov-mand-val">0</div><div class="stat-sub" id="ov-mand-sub">Policy v5 §6.1 triggers</div></div>
+  </div>
+  <div class="stat-row2" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
     <div class="stat-card stat-card-click" onclick="openStatDrill('random')" title="View random sample cases"><div class="stat-label">RANDOM SAMPLE</div><div class="stat-value c-p" id="ov-rand-val">0</div><div class="stat-sub" id="ov-rand-sub">No random sample loaded</div></div>
-    <div class="stat-card stat-card-click" onclick="openStatDrill('ls')" title="View L&amp;S transport cases"><div class="stat-label">L&amp;S TRANSPORT</div><div class="stat-value c-b" id="ov-ls-val">0</div><div class="stat-sub" id="ov-ls-sub">No L&amp;S cases loaded</div></div>
+    <div class="stat-card stat-card-click" onclick="openStatDrill('response')" title="View response time &gt;15 min cases"><div class="stat-label">RESPONSE &gt;15 MIN</div><div class="stat-value c-o" id="ov-resp-val">0</div><div class="stat-sub" id="ov-resp-sub">Response time policy trigger</div></div>
     <div class="stat-card stat-card-click" onclick="openStatDrill('scene')" title="View on-scene &gt;30 min cases"><div class="stat-label">ON-SCENE &gt;30 MIN</div><div class="stat-value c-y" id="ov-scene-val">0</div><div class="stat-sub" id="ov-scene-sub">Response time policy trigger</div></div>
-    <div class="stat-card stat-card-click" onclick="openStatDrill('response')" title="View response time &gt;15 min cases"><div class="stat-label">RESPONSE TIME &gt;15 MIN</div><div class="stat-value c-o" id="ov-resp-val">0</div><div class="stat-sub" id="ov-resp-sub">Response time policy trigger</div></div>
-    <div class="stat-card stat-card-click" onclick="openStatDrill('crc-pending')" title="View CRC cases pending coordinator action"><div class="stat-label">CRC PENDING</div><div class="stat-value c-r" id="ov-crc-pend-val">0</div><div class="stat-sub" id="ov-crc-pend-sub">Awaiting coordinator review</div></div>
+    <div class="stat-card stat-card-click" onclick="openStatDrill('crc-pending')" title="View CRC cases pending"><div class="stat-label">CRC PENDING</div><div class="stat-value c-r" id="ov-crc-pend-val">0</div><div class="stat-sub" id="ov-crc-pend-sub">Awaiting coordinator review</div></div>
     <div class="stat-card stat-card-click" onclick="openStatDrill('crc-complete')" title="View completed CRC cases"><div class="stat-label">CRC COMPLETED</div><div class="stat-value c-g" id="ov-crc-done-val">0</div><div class="stat-sub" id="ov-crc-done-sub">Coordinator disposition recorded</div></div>
   </div>
 
@@ -427,11 +431,12 @@ tr:hover td{background:var(--surface2)}
 <div id="tab-ls" class="tab-content">
   <div id="ls-coverage-warning" style="display:none"></div>
   <div class="sec-label">L&amp;S Utilization — This Period</div>
-  <div class="stat-grid" style="grid-template-columns:repeat(5,1fr)">
-    <div class="stat-card"><div class="stat-label">L&S RESPONSE RUNS</div><div class="stat-value c-o" id="ls-response-count">17</div><div class="stat-sub">Responded lights &amp; sirens this period</div></div>
-    <div class="stat-card"><div class="stat-label">L&S TRANSPORT RUNS</div><div class="stat-value c-r" id="ls-transport-count">5</div><div class="stat-sub">100% policy review required</div></div>
-    <div class="stat-card"><div class="stat-label">AVG L&S SCORE</div><div class="stat-value c-g" id="ls-avg-score">81%</div><div class="stat-sub">From completed L&S scorecards</div></div>
-    <div class="stat-card"><div class="stat-label">REVIEWED</div><div class="stat-value c-b" id="ls-reviewed-count">3 / 5</div><div class="stat-sub">L&S scorecards completed</div></div>
+  <div class="stat-grid" style="grid-template-columns:repeat(6,1fr)">
+    <div class="stat-card"><div class="stat-label">L&S RESPONSE RUNS</div><div class="stat-value c-o" id="ls-response-count">0</div><div class="stat-sub">Responded lights &amp; sirens this period</div></div>
+    <div class="stat-card"><div class="stat-label">L&S TRANSPORT RUNS</div><div class="stat-value c-r" id="ls-transport-count">0</div><div class="stat-sub">100% policy review required</div></div>
+    <div class="stat-card"><div class="stat-label">L&S TRANSPORT %</div><div class="stat-value c-y" id="ls-transport-pct">0%</div><div class="stat-sub" id="ls-transport-pct-sub">Of all incidents this period</div></div>
+    <div class="stat-card"><div class="stat-label">AVG L&S SCORE</div><div class="stat-value c-g" id="ls-avg-score">N/A</div><div class="stat-sub">From completed L&S scorecards</div></div>
+    <div class="stat-card"><div class="stat-label">REVIEWED</div><div class="stat-value c-b" id="ls-reviewed-count">0 / 0</div><div class="stat-sub">L&S scorecards completed</div></div>
     <div class="stat-card"><div class="stat-label">ESCALATED</div><div class="stat-value c-r" id="ls-escalated-count">0</div><div class="stat-sub">E.1 not justified — escalated</div></div>
   </div>
   <div class="sec-label">L&S Transport Cases in Queue</div>
@@ -1004,7 +1009,8 @@ function tTag(t) { return `<span class="tag ${TRIG_STYLE[t]||'tag-gray'}">${t}</
 function losTag(los) {
   if (los==='Advanced Life Support') return '<span class="tag tag-red">ALS</span>';
   if (los==='Basic Life Support') return '<span class="tag tag-blue">BLS</span>';
-  return '<span class="tag tag-gray">N/A</span>';
+  if (!los || los.trim() === '') return '<span class="tag tag-yellow" title="LOS not documented in ESO">⚠ Not Documented</span>';
+  return '<span class="tag tag-gray">' + los + '</span>';
 }
 function statusPill(a) {
   if (a==='Coordinator Review') return '<span class="status-pill s-coord"><span class="sdot"></span>Coord Review</span>';
@@ -1038,7 +1044,7 @@ function initOverview() {
   const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
   setEl('ov-total-val', STATS.total || 0);
   setEl('ov-total-sub', STATS.total
-    ? 'ALS ' + (STATS.als||0) + ' · BLS ' + (STATS.bls||0) + ' · Unknown ' + (STATS.unknown_los||0)
+    ? 'ALS ' + (STATS.als||0) + ' · BLS ' + (STATS.bls||0) + (STATS.unknown_los ? ' · ⚠ LOS not documented: ' + STATS.unknown_los : '')
     : 'No data — import ESO CSVs to begin');
   setEl('ov-review-val', total);
   setEl('ov-review-sub', STATS.total
@@ -1048,7 +1054,9 @@ function initOverview() {
   // Bottom row — mandatory, random, L&S, on-scene, response time
   const mandCount = QUEUE.filter(c => c.is_mandatory && !c.triggers.some(t => t.startsWith('Random'))).length;
   const randCount = STATS.rand_als + STATS.rand_bls || 0;
-  const lsCount   = QUEUE.filter(c => c.triggers.includes('L&S Transport')).length;
+  const lsCount      = QUEUE.filter(c => c.triggers.includes('L&S Transport')).length;
+  const lsTotalCount = STATS.ls_transport || lsCount; // all incidents not just queue
+  const lsPctAll     = STATS.total > 0 ? (lsTotalCount/STATS.total*100).toFixed(1) : '0';
   const sceneCount = QUEUE.filter(c => c.triggers.includes('On-Scene Time >30 min')).length;
   const respCount  = QUEUE.filter(c => c.triggers.includes('Response Time >15 min')).length;
   const alsRandPct = STATS.als ? ((STATS.rand_als||0)/STATS.als*100).toFixed(0) : 0;
@@ -1060,10 +1068,15 @@ function initOverview() {
   setEl('ov-rand-sub', randCount
     ? 'ALS: ' + (STATS.rand_als||0) + ' (' + alsRandPct + '%) · BLS: ' + (STATS.rand_bls||0) + ' (' + blsRandPct + '%)'
     : 'No random sample loaded');
-  setEl('ov-ls-val', lsCount);
-  setEl('ov-ls-sub', lsCount
-    ? (STATS.total ? (lsCount/STATS.total*100).toFixed(1) + '% of incidents · 100% reviewed' : lsCount + ' cases')
-    : 'No L&S cases loaded');
+  // L&S response count from STATS
+  const lsRespCount = STATS.ls_response || 0;
+  const lsPctVal = lsPctAll + '%';
+  setEl('ov-ls-resp-val', lsRespCount);
+  setEl('ov-ls-resp-sub', lsRespCount ? lsRespCount + ' of ' + (STATS.total||0) + ' incidents' : 'No data loaded');
+  setEl('ov-ls-val', lsTotalCount);
+  setEl('ov-ls-sub', lsTotalCount ? lsTotalCount + ' of ' + (STATS.total||0) + ' total incidents (' + lsPctAll + '%)' : 'No L&S cases loaded');
+  setEl('ov-ls-pct-val', lsPctVal);
+  setEl('ov-ls-pct-sub', lsTotalCount ? lsTotalCount + ' of ' + (STATS.total||0) + ' total incidents' : 'Of all transports this period');
   setEl('ov-scene-val', sceneCount);
   setEl('ov-scene-sub', sceneCount ? sceneCount + ' cases this period' : 'Response time policy trigger');
   setEl('ov-resp-val', respCount);
@@ -1163,7 +1176,7 @@ function initOverview() {
 
   const RINFO = {
     Ellinger:   ['rgba(248,81,73,.15)',  'var(--red)',    'FE', 'QI/QA Coordinator'],
-    Overberger: ['rgba(188,140,255,.15)','var(--purple)', 'RO', 'Medical Director'],
+    Overberger: ['rgba(188,140,255,.15)','var(--purple)', 'RO', 'Medical Director — Notified only, not assigned'],
     Steere:     ['rgba(57,211,83,.15)',  'var(--teal)',   'JS', 'Asst. Coordinator'],
     Kristiniak: ['rgba(56,139,253,.15)','var(--accent2)','SK', 'Paramedic · ALS+BLS'],
     Armentrout: ['rgba(63,185,80,.15)', 'var(--green)',  'BA', 'AEMT · ALS+BLS'],
@@ -1285,7 +1298,7 @@ function exportQueueCSV() {
 function initReviewers() {
   const RINFO = {
     Ellinger:   ['rgba(248,81,73,.15)',  'var(--red)',     'FE', 'QI/QA Coordinator'],
-    Overberger: ['rgba(188,140,255,.15)','var(--purple)',  'RO', 'Medical Director'],
+    Overberger: ['rgba(188,140,255,.15)','var(--purple)',  'RO', 'Medical Director — Notified only, not assigned'],
     Steere:     ['rgba(57,211,83,.15)',  'var(--teal)',    'JS', 'Asst. Coordinator'],
     Kristiniak: ['rgba(56,139,253,.15)','var(--accent2)', 'SK', 'Paramedic · ALS+BLS'],
     Armentrout: ['rgba(63,185,80,.15)', 'var(--green)',   'BA', 'AEMT · ALS+BLS'],
@@ -1338,12 +1351,26 @@ function initReviewers() {
       + (randCount>0? ' <span class="tag tag-purple">' + randCount + ' random</span>' : '')
       + (doneCount>0? ' <span class="tag tag-green">' + doneCount + ' done</span>' : '');
 
+    const overdueCoord = cases.filter(function(c){
+      if (!c.date || completedReviews[c.id]) return false;
+      var parts = c.date.split('/');
+      var dl = new Date(parts[2], parts[0]-1, parts[1]);
+      dl.setDate(dl.getDate()+21);
+      return new Date() > dl;
+    }).length;
+    const summaryBar = '<div style="display:flex;gap:16px;padding:10px 14px;background:var(--surface2);border-radius:6px;margin-bottom:10px;flex-wrap:wrap">'
+      + '<span style="font-size:11px;font-family:var(--mono)">📋 <strong>' + cases.length + '</strong> assigned</span>'
+      + '<span style="font-size:11px;font-family:var(--mono);color:var(--green)">✓ <strong>' + doneCount + '</strong> complete</span>'
+      + '<span style="font-size:11px;font-family:var(--mono);color:var(--yellow)">⏳ <strong>' + (cases.length-doneCount) + '</strong> pending</span>'
+      + (overdueCoord > 0 ? '<span style="font-size:11px;font-family:var(--mono);color:var(--red)">⚠ <strong>' + overdueCoord + '</strong> overdue</span>' : '')
+      + '</div>';
     return '<div style="margin-bottom:28px">'
-      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'
         + '<div class="rev-avatar" style="background:' + bg + ';color:' + clr + ';width:32px;height:32px;font-size:12px">' + ini + '</div>'
         + '<div><strong>' + name + '</strong> <span style="font-size:11px;color:var(--muted)">' + cert + '</span></div>'
         + headerTags
       + '</div>'
+      + summaryBar
       + (cases.length===0
         ? '<div style="color:var(--muted);font-size:12px;padding:12px 0">No cases assigned</div>'
         : '<div class="table-wrap"><table>'
@@ -1387,12 +1414,26 @@ function initReviewers() {
         + '<td>' + outbadge + '</td>'
         + '</tr>';
     }).join('');
+    const overdueRev = cases.filter(function(c){
+      if (!c.date || completedReviews[c.id]) return false;
+      var parts = c.date.split('/');
+      var dl = new Date(parts[2], parts[0]-1, parts[1]);
+      dl.setDate(dl.getDate()+21);
+      return new Date() > dl;
+    }).length;
+    const revSummaryBar = '<div style="display:flex;gap:16px;padding:10px 14px;background:var(--surface2);border-radius:6px;margin-bottom:10px;flex-wrap:wrap">'
+      + '<span style="font-size:11px;font-family:var(--mono)">📋 <strong>' + cases.length + '</strong> assigned</span>'
+      + '<span style="font-size:11px;font-family:var(--mono);color:var(--green)">✓ <strong>' + doneCount + '</strong> complete</span>'
+      + '<span style="font-size:11px;font-family:var(--mono);color:var(--yellow)">⏳ <strong>' + (cases.length-doneCount) + '</strong> pending</span>'
+      + (overdueRev > 0 ? '<span style="font-size:11px;font-family:var(--mono);color:var(--red)">⚠ <strong>' + overdueRev + '</strong> overdue (21-day)</span>' : '')
+      + '</div>';
     return '<div style="margin-bottom:28px">'
-      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'
         + '<div class="rev-avatar" style="background:' + bg + ';color:' + clr + ';width:32px;height:32px;font-size:12px">' + ini + '</div>'
         + '<div><strong>' + name + '</strong> <span style="font-size:11px;color:var(--muted)">' + cert + '</span></div>'
         + headerTags
       + '</div>'
+      + revSummaryBar
       + (cases.length===0
         ? '<div style="color:var(--muted);font-size:12px;padding:12px 0">No cases assigned</div>'
         : '<div class="table-wrap"><table><thead><tr><th>INCIDENT #</th><th>DATE</th><th>LEAD</th><th>LOS</th><th>COMPLAINT</th><th>TRIGGERS</th><th>SCENE TIME</th><th>SCORE</th><th>OUTCOME</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
@@ -1401,7 +1442,7 @@ function initReviewers() {
   }).join('<hr style="border:none;border-top:1px solid var(--border);margin:4px 0 24px">');
 
   container.innerHTML =
-    '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);letter-spacing:.1em;text-transform:uppercase;padding:6px 0 8px;border-bottom:1px solid rgba(248,81,73,.25);margin-bottom:16px">⛔ Coordinator Assigned — Auto-Escalation Cases</div>'
+    '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);letter-spacing:.1em;text-transform:uppercase;padding:6px 0 8px;border-bottom:1px solid rgba(248,81,73,.25);margin-bottom:16px">⛔ Coordinator Assigned — Auto-Escalation Cases (Ellinger &amp; Steere primary · Overberger notified)</div>'
     + coordHTML
     + '<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--accent2);letter-spacing:.1em;text-transform:uppercase;padding:6px 0 8px;border-bottom:1px solid rgba(56,139,253,.25);margin:20px 0 16px">👥 Reviewer Assignments</div>'
     + reviewerHTML;
@@ -1671,7 +1712,10 @@ function initLS() {
   }
 
   var el;
+  const lsTransPct = STATS.total > 0 ? (lsCases.length / STATS.total * 100).toFixed(1) + '%' : '0%';
   el = document.getElementById('ls-response-count');   if(el) el.textContent = lsResponseCount || STATS.ls_response || 0;
+  el = document.getElementById('ls-transport-pct');    if(el) el.textContent = lsTransPct;
+  el = document.getElementById('ls-transport-pct-sub'); if(el) el.textContent = lsCases.length + ' of ' + (STATS.total||0) + ' incidents';
   el = document.getElementById('ls-transport-count');  if(el) el.textContent = lsCases.length;
   el = document.getElementById('ls-avg-score');        if(el) el.textContent = lsAvg !== null ? lsAvg + '%' : 'N/A';
   el = document.getElementById('ls-reviewed-count');   if(el) el.textContent = lsDone.length + ' / ' + lsCases.length;
@@ -3054,11 +3098,13 @@ async function _doProcessImport(btn, origBtnText) {
 
   function isALSCase(c) {
     if (/advanced life support/i.test(c.los)) return true;
+    // Check ALS-implied triggers regardless of documented LOS
     return c.triggers.some(function(t){ return ALS_TRIGGERS_IMPLIED.has(t); });
+    // Unknown/blank LOS defaults to BLS assignment
   }
 
   var alsIdx=0, blsIdx=0, coordIdx=0;
-  const COORD_REVIEWERS = ['Steere','Ellinger','Overberger'];
+  const COORD_REVIEWERS = ['Steere','Ellinger']; // Overberger notified but not assigned
   queue.forEach(function(c) {
     const isRTOnly = c.triggers.length === 1 && c.triggers[0] === 'Response Time >15 min';
     const isOSOnly = c.triggers.length === 1 && c.triggers[0] === 'On-Scene Time >30 min';
@@ -3453,6 +3499,11 @@ function openStatDrill(filter) {
       });
       title = 'Random Sample Cases';
       sub   = cases.length + ' cases selected for random QI sampling';
+      break;
+    case 'ls-response':
+      cases = QUEUE.filter(function(c){ return c.ls_response && !/no lights/i.test(c.ls_response); });
+      title = 'L&S Response Runs';
+      sub   = cases.length + ' incidents responded with lights & sirens this period';
       break;
     case 'ls':
       cases = QUEUE.filter(function(c){ return c.triggers.includes('L&S Transport'); });
