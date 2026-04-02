@@ -1697,7 +1697,10 @@ function initLS() {
   if (lsCoverageEl) {
     const covered = STATS.clin_coverage || 0;
     const total   = STATS.total || 0;
-    if (total > 0 && covered < total) {
+    // Only warn if operational CSV doesn't have L&S columns
+    // (if STATS.ls_transport > STATS.clin_coverage, operational is providing coverage)
+    const opHasLSCoverage = (STATS.ls_transport || 0) > (STATS.clin_coverage || 0);
+    if (total > 0 && covered < total && !opHasLSCoverage) {
       const pct = Math.round(covered/total*100);
       lsCoverageEl.innerHTML = '<div style="padding:10px 14px;background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);border-radius:6px;font-size:11px;margin-bottom:14px">'
         + '<strong style="color:var(--red)">&#9888; Incomplete L&S data:</strong> Clinical CSV covers '
@@ -1895,17 +1898,28 @@ function openScorecard(caseId) {
   // RT-only: Response Time >15 min is the ONLY trigger (no other mandatory triggers)
   const isRTOnly = c.triggers.length === 1 && c.triggers[0] === 'Response Time >15 min';
   const isOSOnly = c.triggers.length === 1 && c.triggers[0] === 'On-Scene Time >30 min';
+  // L&S-only: has L&S Transport trigger but no other CLINICAL triggers
+  // (Random Sample, Response Time, On-Scene Time are not clinical triggers)
+  const NON_CLINICAL_TRIGGERS = new Set(['L&S Transport','Response Time >15 min','On-Scene Time >30 min','Random Sample ALS','Random Sample BLS']);
+  const hasLSTransport = c.triggers.includes('L&S Transport');
+  const hasClinicalTriggers = c.triggers.some(function(t){ return !NON_CLINICAL_TRIGGERS.has(t); });
+  const isLSOnly = hasLSTransport && !hasClinicalTriggers;
   const osDone   = !!(saved.os);
   const rtDone   = !!(saved.rt);
+  const lsDone2  = !!(saved.ls); // alias for clarity in decide block
 
   // Decide which scorecard to open:
-  // RT-only cases → show RT scorecard only (no clinical)
-  // L&S cases → clinical first, then L&S
+  // RT-only → RT scorecard only
+  // OS-only → OS scorecard only
+  // L&S-only → L&S scorecard only (no clinical needed — L&S justification is the review)
+  // L&S + other triggers → clinical first, then L&S
   // All others → clinical
   if (isRTOnly) {
     activeSCType = 'rt';
   } else if (isOSOnly) {
     activeSCType = 'os';
+  } else if (isLSOnly) {
+    activeSCType = 'ls';
   } else if (!clinDone) {
     activeSCType = 'clinical';
   } else if (hasLS && !lsDone) {
@@ -1921,7 +1935,7 @@ function openScorecard(caseId) {
   }
 
   // ── Case info bar ──────────────────────────────────────────────────────────
-  document.getElementById('scTitle').textContent = caseId + (isRTOnly ? ' — Response Time Review' : isOSOnly ? ' — On-Scene Time Review' : ' — ePCR Clinical Scorecard');
+  document.getElementById('scTitle').textContent = caseId + (isRTOnly ? ' — Response Time Review' : isOSOnly ? ' — On-Scene Time Review' : isLSOnly ? ' — L&S Transport Review' : ' — ePCR Clinical Scorecard');
   document.getElementById('scSubtitle').textContent = 'Policy v5 · ' + c.date + ' · ' + (c.shift||'') + ' · Reviewer: ' + currentUser.name;
   document.getElementById('scCaseInfo').innerHTML =
     '<div><div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:3px">LEAD PROVIDER</div><strong>' + (c.lead||'N/A') + '</strong></div>'
@@ -1961,6 +1975,15 @@ function openScorecard(caseId) {
       alertHtml = '<div style="background:rgba(63,185,80,.07);border:1px solid rgba(63,185,80,.3);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px">'
         + '<span>&#10003; <strong style="color:var(--green)">Response Time Review complete.</strong></span>'
         + '</div>';
+    } else if (isLSOnly && !lsDone) {
+      alertHtml = '<div style="background:rgba(56,139,253,.1);border:1px solid rgba(56,139,253,.4);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px">'
+        + '<strong style="color:var(--accent2)">&#128680; L&S Transport Review.</strong>'
+        + ' This case was flagged solely for L&S transport. Complete the <strong>L&S Scorecard</strong> below.'
+        + '</div>';
+    } else if (isLSOnly && lsDone) {
+      alertHtml = '<div style="background:rgba(63,185,80,.07);border:1px solid rgba(63,185,80,.3);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px">'
+        + '<span>&#10003; <strong style="color:var(--green)">L&S Review complete.</strong></span>'
+        + '</div>';
     } else if (hasLS && !clinDone) {
       alertHtml = '<div style="background:rgba(240,136,62,.1);border:1px solid rgba(240,136,62,.4);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px">'
         + '<strong style="color:var(--accent)">&#9888; Two reviews required for this case.</strong>'
@@ -1999,6 +2022,8 @@ function buildSCTabs(hasLS, clinDone, lsDone) {
   const saved    = completedReviews[activeCase.id] || {};
   const isRTOnly = activeCase.triggers.length === 1 && activeCase.triggers[0] === 'Response Time >15 min';
   const isOSOnly = activeCase.triggers.length === 1 && activeCase.triggers[0] === 'On-Scene Time >30 min';
+  const NON_CLINICAL_TRIGGERS2 = new Set(['L&S Transport','Response Time >15 min','On-Scene Time >30 min','Random Sample ALS','Random Sample BLS']);
+  const isLSOnly = activeCase.triggers.includes('L&S Transport') && !activeCase.triggers.some(function(t){ return !NON_CLINICAL_TRIGGERS2.has(t); });
 
   function tabStyle(type) {
     const isActive = activeSCType === type;
@@ -2020,6 +2045,12 @@ function buildSCTabs(hasLS, clinDone, lsDone) {
     const osCheck = saved.os ? ' <span style="color:var(--green)">&#10003;</span>' : '';
     return '<button onclick="switchSCType(\'os\')" id="scTabOS" style="' + tabStyle('os') + '">'
       + '&#9201; On-Scene Time Review' + osCheck + '</button>';
+  }
+  // L&S-only: show only the L&S tab (no clinical needed)
+  if (isLSOnly) {
+    const lsOnlyCheck = saved.ls ? ' <span style="color:var(--green)">&#10003;</span>' : '';
+    return '<button onclick="switchSCType(\'ls\')" id="scTabLS" style="' + tabStyle('ls') + '">'
+      + '&#128680; L&S Scorecard' + lsOnlyCheck + '</button>';
   }
 
   const clinCheck = saved.clinical ? ' <span style="color:var(--green)">&#10003;</span>' : '';
