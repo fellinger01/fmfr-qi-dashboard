@@ -952,6 +952,9 @@ async function setupUI() {
   const ovNav = document.getElementById('tab-nav-overview');
   if (ovNav) ovNav.classList.toggle('hidden', !isCoord);
 
+  // Load PINs from Supabase (source of truth across all devices)
+  await loadPinsFromSupabase();
+
   // Load queue from Supabase if QUEUE is empty (e.g. after page reload)
   if (QUEUE.length === 0) {
     const queueLoaded = await loadQueueFromSupabase();
@@ -3097,8 +3100,21 @@ async function _doProcessImport(btn, origBtnText) {
     if (ci && /air|helicopter|flight/i.test(ci.dest_type||'')) triggers.add('Aeromedical Transport');
     if (ci && ci.ls_transport && !/no lights/i.test(ci.ls_transport)) triggers.add('L&S Transport');
 
-    const sceneRaw = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
-    const sceneSec = sceneRaw ? parseInt(sceneRaw) : null;
+    // Scene time: timestamp-based (Time in On Scene → Time in At Destination) — more accurate
+    // than the ESO pre-calculated field which measures At Patient to Depart Scene
+    var sceneSec = null;
+    try {
+      var tOS = op['Time in On Scene'] ? new Date(op['Time in On Scene']) : null;
+      var tAD = op['Time in At Destination'] ? new Date(op['Time in At Destination']) : null;
+      if (tOS && tAD && !isNaN(tOS.getTime()) && !isNaN(tAD.getTime()) && tAD > tOS) {
+        sceneSec = Math.round((tAD - tOS) / 1000);
+      }
+    } catch(e) {}
+    // Fallback to ESO field if timestamps unavailable
+    if (!sceneSec) {
+      var sceneRawFb = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
+      if (sceneRawFb) sceneSec = parseInt(sceneRawFb);
+    }
     const isCardiacArrest = /cardiac arrest/i.test(emd) || impressions.some(function(i){ return /cardiac arrest|traumatic arrest/i.test(i); });
     if (sceneSec && sceneSec > 1800 && !isCardiacArrest) triggers.add('On-Scene Time >30 min');
 
@@ -3130,8 +3146,19 @@ async function _doProcessImport(btn, origBtnText) {
       const is_mandatory = triggers.some(function(t){ return MANDATORY_TRIGGERS.has(t); });
       const tDispatch = parseTs(op['Time in Dispatched']);
       const dateStr = tDispatch ? (tDispatch.getMonth()+1).toString().padStart(2,'0') + '/' + tDispatch.getDate().toString().padStart(2,'0') + '/' + tDispatch.getFullYear() : '';
-      const sceneRaw = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
-      const sceneSec = sceneRaw ? parseInt(sceneRaw) : null;
+      // Scene time for display — same timestamp-based calc as detectTriggers
+      var sceneSecDisp = null;
+      try {
+        var tOS3 = op['Time in On Scene'] ? new Date(op['Time in On Scene']) : null;
+        var tAD3 = op['Time in At Destination'] ? new Date(op['Time in At Destination']) : null;
+        if (tOS3 && tAD3 && !isNaN(tOS3.getTime()) && !isNaN(tAD3.getTime()) && tAD3 > tOS3) {
+          sceneSecDisp = Math.round((tAD3 - tOS3) / 1000);
+        }
+      } catch(e) {}
+      if (!sceneSecDisp) {
+        var scRawFb = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
+        if (scRawFb) sceneSecDisp = parseInt(scRawFb);
+      }
       allCases.push({
         id: id, date: dateStr,
         lead: (op['Lead Provider Last Name']||'').trim(),
@@ -3145,7 +3172,7 @@ async function _doProcessImport(btn, origBtnText) {
         shift: (op['Shift']||'').trim(),
         ls_transport: ci ? (ci.ls_transport||'') : '',
         ls_response:  ci ? (ci.ls_response||'') : '',
-        scene_time_sec: sceneSec, delays: {}, injury: ci ? (ci.injury||'') : '',
+        scene_time_sec: sceneSecDisp, delays: {}, injury: ci ? (ci.injury||'') : '',
         assigned_to: '',
       });
     });
@@ -3357,13 +3384,8 @@ function confirmImport() {
   const endEl   = document.getElementById('import-end');
   const newKey  = 'FMFR_QI_reviews_' + (startEl.value||'new').replace(/-/g,'_');
 
-  // Clear old reviews for new period
-  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
-  if (isSupabaseConfigured()) {
-    fetch(SUPABASE_URL + '/rest/v1/qi_reviews?id=neq.null', {
-      method: 'DELETE', headers: sbHeaders(),
-    }).catch(function(e){ console.warn('Supabase clear failed:', e); });
-  }
+  // NOTE: Never delete existing reviews on import — they are preserved across periods
+  // Reviews in qi_reviews are keyed by incident ID and persist permanently
 
   // Swap QUEUE and STATS in memory
   // We can't reassign const, so we splice the array and rebuild stats object
@@ -3372,9 +3394,8 @@ function confirmImport() {
   Object.keys(STATS).forEach(function(k){ delete STATS[k]; });
   Object.assign(STATS, stats);
 
-  // Clear reviews — fresh period
-  completedReviews = {};
-  try { localStorage.setItem(newKey, JSON.stringify({})); } catch(e) {}
+  // Load existing reviews from Supabase into memory — preserves prior period work
+  // completedReviews is NOT cleared — existing reviews remain visible
 
   // Update the storage key reference
   // (STORAGE_KEY is const — store the new key separately)
@@ -3505,12 +3526,23 @@ async function savePin(name) {
 
   USERS[name].pin = hash;
 
-  // Persist PIN changes to localStorage
+  // Persist PIN changes to localStorage AND Supabase
   try {
     var pinStore = JSON.parse(localStorage.getItem('FMFR_QI_pins') || '{}');
     pinStore[name] = hash;
     localStorage.setItem('FMFR_QI_pins', JSON.stringify(pinStore));
   } catch(e) {}
+  // Save to Supabase so PINs persist across devices
+  if (isSupabaseConfigured()) {
+    try {
+      var pinStore2 = JSON.parse(localStorage.getItem('FMFR_QI_pins') || '{}');
+      fetch(SUPABASE_URL + '/rest/v1/qi_queue', {
+        method: 'POST',
+        headers: Object.assign({'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'}, sbHeaders()),
+        body: JSON.stringify({ id: 'pins', queue_data: pinStore2, stats_data: {}, saved_by: currentUser ? currentUser.name : 'admin' })
+      }).catch(function(e){ console.warn('PIN save to Supabase failed:', e); });
+    } catch(e) {}
+  }
 
   input.value = '';
   input.style.borderColor = 'var(--green)';
@@ -3518,7 +3550,7 @@ async function savePin(name) {
   alert('PIN updated for ' + name + '.\n\nThey can now log in with their new PIN.');
 }
 
-// Load any previously saved custom PINs on startup
+// Load any previously saved custom PINs on startup (localStorage first, then Supabase)
 (function loadCustomPins() {
   try {
     var pinStore = JSON.parse(localStorage.getItem('FMFR_QI_pins') || '{}');
@@ -3527,6 +3559,26 @@ async function savePin(name) {
     });
   } catch(e) {}
 })();
+
+// Also load PINs from Supabase (overrides localStorage — Supabase is source of truth)
+async function loadPinsFromSupabase() {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/qi_queue?id=eq.pins&select=queue_data', {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+    });
+    if (!res.ok) return;
+    const rows = await res.json();
+    if (rows.length && rows[0].queue_data) {
+      const pinStore = rows[0].queue_data;
+      Object.keys(pinStore).forEach(function(name) {
+        if (USERS[name]) USERS[name].pin = pinStore[name];
+      });
+      // Update localStorage too
+      try { localStorage.setItem('FMFR_QI_pins', JSON.stringify(pinStore)); } catch(e) {}
+    }
+  } catch(e) { console.warn('PIN load from Supabase failed:', e); }
+}
 
 
 
