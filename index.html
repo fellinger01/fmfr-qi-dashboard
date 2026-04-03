@@ -1257,6 +1257,7 @@ function renderQueue(data) {
     const pct = scoreInfo ? Math.round(scoreInfo.pct * 100) : null;
     const scoreHtml = pct !== null
       ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
+      : isRTOSOnlyD ? '<span class="score-chip score-ac">Reviewed</span>'
       : '<span class="score-chip score-na">Pending</span>';
     const doneBadge = scoreInfo ? '<span style="font-size:10px;color:var(--green)">&#10003;</span>' : '';
     return '<tr>' +
@@ -1328,11 +1329,17 @@ function initReviewers() {
 
     const rows = cases.map(function(c) {
       const rev = completedReviews[c.id];
-      const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100) : null;
+      // Score: use clinical if available, then L&S, then RT/OS show as 'Reviewed'
+      const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100)
+                : rev && rev.ls      ? Math.round(rev.ls.pct*100)
+                : null;
+      const isRTOSOnly = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
       const rclr = pct===null?'var(--muted)':pct>=90?'var(--green)':pct>=75?'var(--accent2)':pct>=60?'var(--yellow)':'var(--red)';
-      const rchip = pct===null
-        ? '<span style="color:var(--muted);font-size:11px">Pending</span>'
-        : '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
+      const rchip = isRTOSOnly
+        ? '<span class="score-chip score-ac">Reviewed</span>'
+        : pct===null
+          ? '<span style="color:var(--muted);font-size:11px">Pending</span>'
+          : '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
       const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome : '';
       const outclr = outcome==='Positive Recognition'||outcome==='No Action Required'?'var(--green)':outcome==='Provider Feedback'?'var(--accent2)':outcome==='Required Education'?'var(--yellow)':outcome==='CRC Required'?'var(--red)':'var(--muted)';
       const outbadge = outcome
@@ -1404,7 +1411,11 @@ function initReviewers() {
       + (doneCount>0? ' <span class="tag tag-green">' + doneCount + ' done</span>' : '');
     const rows = cases.map(function(c) {
       const rev = completedReviews[c.id];
-      const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100) : null;
+      // Score: use clinical if available, then L&S, then RT/OS show as 'Reviewed'
+      const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100)
+                : rev && rev.ls      ? Math.round(rev.ls.pct*100)
+                : null;
+      const isRTOSOnly = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
       const rchip = pct===null ? '<span style="color:var(--muted);font-size:11px">Pending</span>'
         : '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
       const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome : '';
@@ -1515,7 +1526,11 @@ function initEscalations() {
             const mt = c.triggers.find(function(t){ return HIGH.includes(t); }) || c.triggers[0];
             const bc = borderColor[mt] || 'rgba(210,153,34,.4)';
             const rev = completedReviews[c.id];
-            const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100) : null;
+            // Score: use clinical if available, then L&S, then RT/OS show as 'Reviewed'
+      const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100)
+                : rev && rev.ls      ? Math.round(rev.ls.pct*100)
+                : null;
+      const isRTOSOnly = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
             const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome : null;
             const chip = pct !== null
               ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
@@ -1572,7 +1587,11 @@ function initEscalations() {
 // ── MY CASES (reviewer only) ──
 function caseCard(c, completed=false) {
   const rev = completedReviews[c.id];
-  const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100) : null;
+  // Score: use clinical if available, then L&S, then RT/OS show as 'Reviewed'
+      const pct = rev && rev.clinical ? Math.round(rev.clinical.pct*100)
+                : rev && rev.ls      ? Math.round(rev.ls.pct*100)
+                : null;
+      const isRTOSOnly = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
   const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome : null;
   const crcFlag = rev && rev.clinical && rev.clinical.findings && rev.clinical.findings.crc;
   const scoreChip = pct !== null
@@ -3100,21 +3119,11 @@ async function _doProcessImport(btn, origBtnText) {
     if (ci && /air|helicopter|flight/i.test(ci.dest_type||'')) triggers.add('Aeromedical Transport');
     if (ci && ci.ls_transport && !/no lights/i.test(ci.ls_transport)) triggers.add('L&S Transport');
 
-    // Scene time: timestamp-based (Time in On Scene → Time in At Destination) — more accurate
-    // than the ESO pre-calculated field which measures At Patient to Depart Scene
-    var sceneSec = null;
-    try {
-      var tOS = op['Time in On Scene'] ? new Date(op['Time in On Scene']) : null;
-      var tAD = op['Time in At Destination'] ? new Date(op['Time in At Destination']) : null;
-      if (tOS && tAD && !isNaN(tOS.getTime()) && !isNaN(tAD.getTime()) && tAD > tOS) {
-        sceneSec = Math.round((tAD - tOS) / 1000);
-      }
-    } catch(e) {}
-    // Fallback to ESO field if timestamps unavailable
-    if (!sceneSec) {
-      var sceneRawFb = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
-      if (sceneRawFb) sceneSec = parseInt(sceneRawFb);
-    }
+    // Scene time: ESO pre-calculated field "Total Scene Time - At Patient to Depart Scene"
+    // This is the correct measure — At Patient contact to departing scene for transport.
+    // Cases with incorrect values are a data entry issue in ESO, not a calculation error.
+    const sceneRaw = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
+    const sceneSec = sceneRaw ? parseInt(sceneRaw) : null;
     const isCardiacArrest = /cardiac arrest/i.test(emd) || impressions.some(function(i){ return /cardiac arrest|traumatic arrest/i.test(i); });
     if (sceneSec && sceneSec > 1800 && !isCardiacArrest) triggers.add('On-Scene Time >30 min');
 
@@ -3146,19 +3155,9 @@ async function _doProcessImport(btn, origBtnText) {
       const is_mandatory = triggers.some(function(t){ return MANDATORY_TRIGGERS.has(t); });
       const tDispatch = parseTs(op['Time in Dispatched']);
       const dateStr = tDispatch ? (tDispatch.getMonth()+1).toString().padStart(2,'0') + '/' + tDispatch.getDate().toString().padStart(2,'0') + '/' + tDispatch.getFullYear() : '';
-      // Scene time for display — same timestamp-based calc as detectTriggers
-      var sceneSecDisp = null;
-      try {
-        var tOS3 = op['Time in On Scene'] ? new Date(op['Time in On Scene']) : null;
-        var tAD3 = op['Time in At Destination'] ? new Date(op['Time in At Destination']) : null;
-        if (tOS3 && tAD3 && !isNaN(tOS3.getTime()) && !isNaN(tAD3.getTime()) && tAD3 > tOS3) {
-          sceneSecDisp = Math.round((tAD3 - tOS3) / 1000);
-        }
-      } catch(e) {}
-      if (!sceneSecDisp) {
-        var scRawFb = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
-        if (scRawFb) sceneSecDisp = parseInt(scRawFb);
-      }
+      // Scene time for display — ESO pre-calculated field
+      const sceneRawDisp = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
+      const sceneSecDisp = sceneRawDisp ? parseInt(sceneRawDisp) : null;
       allCases.push({
         id: id, date: dateStr,
         lead: (op['Lead Provider Last Name']||'').trim(),
@@ -3689,7 +3688,10 @@ function openStatDrill(filter) {
   } else {
     var rows = cases.map(function(c) {
       var rev  = completedReviews[c.id];
-      var pct  = rev && rev.clinical ? Math.round(rev.clinical.pct*100) : null;
+      var pct  = rev && rev.clinical ? Math.round(rev.clinical.pct*100)
+                : rev && rev.ls      ? Math.round(rev.ls.pct*100)
+                : null;
+      var isRTOSOnlyD = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
       var done = !!rev;
       var chip = pct !== null
         ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
