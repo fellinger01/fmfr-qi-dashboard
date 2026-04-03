@@ -3119,11 +3119,20 @@ async function _doProcessImport(btn, origBtnText) {
     if (ci && /air|helicopter|flight/i.test(ci.dest_type||'')) triggers.add('Aeromedical Transport');
     if (ci && ci.ls_transport && !/no lights/i.test(ci.ls_transport)) triggers.add('L&S Transport');
 
-    // Scene time: ESO pre-calculated field "Total Scene Time - At Patient to Depart Scene"
-    // This is the correct measure — At Patient contact to departing scene for transport.
-    // Cases with incorrect values are a data entry issue in ESO, not a calculation error.
-    const sceneRaw = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
-    const sceneSec = sceneRaw ? parseInt(sceneRaw) : null;
+    // Scene time: (Time in At Destination - Time in At Patient) - Transport Time
+    // This correctly measures At Patient to departing scene (transport time subtracted).
+    // The ESO pre-calculated field is wrong for multi-crew incidents (multiplies by crew count).
+    var sceneSec = null;
+    try {
+      var tAP = op['Time in At Patient'] ? new Date(op['Time in At Patient']) : null;
+      var tAD = op['Time in At Destination'] ? new Date(op['Time in At Destination']) : null;
+      var transRaw = (op['Transport Time']||'').toString().replace(/,/g,'').trim();
+      var transSec = transRaw ? parseInt(transRaw) : 0;
+      if (tAP && tAD && !isNaN(tAP.getTime()) && !isNaN(tAD.getTime()) && tAD > tAP) {
+        sceneSec = Math.round((tAD - tAP) / 1000) - transSec;
+        if (sceneSec < 0) sceneSec = 0;
+      }
+    } catch(e) {}
     const isCardiacArrest = /cardiac arrest/i.test(emd) || impressions.some(function(i){ return /cardiac arrest|traumatic arrest/i.test(i); });
     if (sceneSec && sceneSec > 1800 && !isCardiacArrest) triggers.add('On-Scene Time >30 min');
 
@@ -3155,9 +3164,18 @@ async function _doProcessImport(btn, origBtnText) {
       const is_mandatory = triggers.some(function(t){ return MANDATORY_TRIGGERS.has(t); });
       const tDispatch = parseTs(op['Time in Dispatched']);
       const dateStr = tDispatch ? (tDispatch.getMonth()+1).toString().padStart(2,'0') + '/' + tDispatch.getDate().toString().padStart(2,'0') + '/' + tDispatch.getFullYear() : '';
-      // Scene time for display — ESO pre-calculated field
-      const sceneRawDisp = (op['Total Scene Time - At Patient to Depart Scene']||'').replace(/,/g,'').trim();
-      const sceneSecDisp = sceneRawDisp ? parseInt(sceneRawDisp) : null;
+      // Scene time for display — same calculation as trigger detection
+      var sceneSecDisp = null;
+      try {
+        var tAP2 = op['Time in At Patient'] ? new Date(op['Time in At Patient']) : null;
+        var tAD2 = op['Time in At Destination'] ? new Date(op['Time in At Destination']) : null;
+        var transRaw2 = (op['Transport Time']||'').toString().replace(/,/g,'').trim();
+        var transSec2 = transRaw2 ? parseInt(transRaw2) : 0;
+        if (tAP2 && tAD2 && !isNaN(tAP2.getTime()) && !isNaN(tAD2.getTime()) && tAD2 > tAP2) {
+          sceneSecDisp = Math.round((tAD2 - tAP2) / 1000) - transSec2;
+          if (sceneSecDisp < 0) sceneSecDisp = 0;
+        }
+      } catch(e) {}
       allCases.push({
         id: id, date: dateStr,
         lead: (op['Lead Provider Last Name']||'').trim(),
