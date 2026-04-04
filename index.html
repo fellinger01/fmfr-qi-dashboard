@@ -235,7 +235,7 @@ tr:hover td{background:var(--surface2)}
 
 <!-- NAV -->
 <div class="nav-tabs" id="navTabs">
-  <div class="nav-tab active" onclick="showTab('overview',this)" id="tab-nav-overview">📊 Overview</div>
+  <div class="nav-tab active" onclick="showTab('overview',this)" id="tab-nav-overview" style="display:none">📊 Overview</div>
   <div class="nav-tab" onclick="showTab('queue',this)" id="tab-nav-queue">📋 Review Queue <span class="tab-badge tb-blue" id="queueBadge">0</span></div>
   <div class="nav-tab" onclick="showTab('reviewers',this)" id="tab-nav-reviewers">👤 Reviewers</div>
   <div class="nav-tab" onclick="showTab('providers',this)" id="tab-nav-providers">🚑 Providers</div>
@@ -739,6 +739,8 @@ async function loadPersistedReviews() {
       const rev = {};
       if (row.clinical)                rev.clinical                = row.clinical;
       if (row.ls)                      rev.ls                      = row.ls;
+      if (row.rt)                      rev.rt                      = row.rt;
+      if (row.os)                      rev.os                      = row.os;
       if (row.coordinator_disposition) rev.coordinator_disposition  = row.coordinator_disposition;
       if (row.last_type)               rev.lastType                = row.last_type;
       completedReviews[row.id] = rev;
@@ -888,11 +890,9 @@ function doLogout() {
   document.getElementById('loginPin').value = '';
   document.getElementById('loginError').textContent = '';
   updateLoginBtn();
-  // Reset to overview tab
+  // Reset tabs on logout — overview is shown by default (will be hidden for reviewers on next login)
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-overview').classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-nav-overview').classList.add('active');
 }
 
 // ── SETUP UI BASED ON ROLE ──
@@ -950,9 +950,9 @@ async function setupUI() {
     const el = document.getElementById('tab-nav-' + id);
     if (el) el.classList.toggle('hidden', isCoord);
   });
-  // Overview tab — coordinators only
+  // Overview tab — show for coordinators only, hide for reviewers
   const ovNav = document.getElementById('tab-nav-overview');
-  if (ovNav) ovNav.classList.toggle('hidden', !isCoord);
+  if (ovNav) ovNav.style.display = isCoord ? '' : 'none';
 
   // Load PINs from Supabase (source of truth across all devices)
   await loadPinsFromSupabase();
