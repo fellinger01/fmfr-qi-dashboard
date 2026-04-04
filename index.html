@@ -684,7 +684,9 @@ function buildRow(id) {
   return {
     id:                      id,
     clinical:                rev.clinical                || null,
-    ls:                      rev.ls                     || null,
+    ls:                      rev.ls                      || null,
+    rt:                      rev.rt                      || null,
+    os:                      rev.os                      || null,
     coordinator_disposition: rev.coordinator_disposition || null,
     last_type:               rev.lastType               || 'clinical',
     updated_by:              currentUser ? currentUser.name : '',
@@ -967,9 +969,9 @@ async function setupUI() {
     }
   }
 
-  // Init all tabs
-  initOverview();
+  // Init all tabs — overview only for coordinators
   if (isCoord) {
+    initOverview();
     initQueue();
     initReviewers();
     initProviders();
@@ -1671,11 +1673,17 @@ function initMyCases() {
       + '</tr></thead><tbody>';
     html += done.map(c => {
       const r = completedReviews[c.id];
-      const pct = r && r.clinical ? Math.round(r.clinical.pct*100) : 0;
-      const chip = '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
-      const outc = r.clinical.findings.outcome;
-      const outclr = outc==='Positive Recognition'||outc==='No Action Required'?'var(--green)':outc==='Provider Feedback'?'var(--accent2)':outc==='Required Education'?'var(--yellow)':'var(--red)';
-      const crcBadge = r.clinical.findings.crc ? ' <span style="color:var(--red);font-size:10px">&#9873; CRC</span>' : '';
+      const hasClin = r && r.clinical;
+      const hasLS   = r && r.ls;
+      const hasRT   = r && r.rt;
+      const hasOS   = r && r.os;
+      const pct = hasClin ? Math.round(r.clinical.pct*100) : hasLS ? Math.round(r.ls.pct*100) : null;
+      const chip = pct !== null
+        ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
+        : '<span class="score-chip score-ac">Reviewed</span>';
+      const outc = hasClin && r.clinical.findings ? r.clinical.findings.outcome : hasLS && r.ls.findings ? r.ls.findings.outcome : (hasRT||hasOS) ? 'Reviewed' : '';
+      const outclr = outc==='Positive Recognition'||outc==='No Action Required'?'var(--green)':outc==='Provider Feedback'?'var(--accent2)':outc==='Required Education'?'var(--yellow)':outc==='Reviewed'?'var(--accent2)':'var(--red)';
+      const crcBadge = hasClin && r.clinical.findings && r.clinical.findings.crc ? ' <span style="color:var(--red);font-size:10px">&#9873; CRC</span>' : '';
       return '<tr style="background:rgba(63,185,80,.03)">'
         + '<td style="font-family:var(--mono);color:var(--accent2);cursor:pointer;text-decoration:underline" onclick="openScorecard(this.dataset.id)" data-id="' + c.id + '">' + c.id + '</td>'
         + '<td style="font-size:11px;color:var(--muted)">' + c.date + '</td>'
@@ -1683,7 +1691,7 @@ function initMyCases() {
         + '<td>' + c.triggers.map(tTag).join('') + '</td>'
         + '<td>' + chip + '</td>'
         + '<td><span style="font-size:11px;color:' + outclr + '">' + outc + '</span>' + crcBadge + '</td>'
-        + '<td style="font-size:10px;color:var(--muted)">' + r.clinical.submittedAt + '</td>'
+        + '<td style="font-size:10px;color:var(--muted)">' + (hasClin ? r.clinical.submittedAt : hasLS ? r.ls.submittedAt : '') + '</td>'
         + '</tr>';
     }).join('');
     html += '</tbody></table></div>';
@@ -3796,6 +3804,8 @@ function startAutoRefresh() {
         const rev = {};
         if (row.clinical)                rev.clinical                = row.clinical;
         if (row.ls)                      rev.ls                      = row.ls;
+        if (row.rt)                      rev.rt                      = row.rt;
+        if (row.os)                      rev.os                      = row.os;
         if (row.coordinator_disposition) rev.coordinator_disposition = row.coordinator_disposition;
         if (row.last_type)               rev.lastType                = row.last_type;
         completedReviews[row.id] = rev;
