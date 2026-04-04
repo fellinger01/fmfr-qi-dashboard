@@ -1640,7 +1640,9 @@ function initMyCases() {
   const myCases = isCoord ? QUEUE : QUEUE.filter(c => c.assigned_to === key);
   document.getElementById('myCasesBadge').textContent = myCases.length;
 
-  const mandatory = myCases.filter(c => c.is_mandatory);
+  // Use Set to track rendered case IDs to avoid duplicates
+  const renderedIds = new Set();
+  const mandatory = myCases.filter(c => c.is_mandatory && !c.triggers.some(t => t.startsWith('Random')));
   const ls = myCases.filter(function(c){ return c.triggers.includes('L&S Transport') && !c.is_mandatory; });
   const rand = myCases.filter(c => c.triggers.some(t => t.startsWith('Random')));
   const done = myCases.filter(c => completedReviews[c.id]);
@@ -1654,15 +1656,21 @@ function initMyCases() {
 
   if (mandatory.length > 0) {
     html += '<div class="sec-label" style="margin-top:' + (isCoord?'16px':'0') + '">Mandatory 100% Review Cases (' + mandatory.length + ')</div>';
-    html += mandatory.map(c => caseCard(c, !!completedReviews[c.id])).join('');
+    html += mandatory.map(c => { renderedIds.add(c.id); return caseCard(c, !!completedReviews[c.id]); }).join('');
   }
   if (ls.length > 0) {
     html += '<div class="sec-label" style="margin-top:16px">L&S Transport Cases (' + ls.length + ')</div>';
-    html += ls.map(c => caseCard(c, !!completedReviews[c.id])).join('');
+    html += ls.map(c => { renderedIds.add(c.id); return caseCard(c, !!completedReviews[c.id]); }).join('');
   }
   if (rand.length > 0) {
     html += '<div class="sec-label" style="margin-top:16px">Random Sample Cases (' + rand.length + ')</div>';
-    html += rand.map(c => caseCard(c, !!completedReviews[c.id])).join('');
+    html += rand.map(c => { renderedIds.add(c.id); return caseCard(c, !!completedReviews[c.id]); }).join('');
+  }
+  // Catch-all: any cases not shown above (shouldn't happen but guards against filter edge cases)
+  const unrendered = myCases.filter(c => !renderedIds.has(c.id));
+  if (unrendered.length > 0) {
+    html += '<div class="sec-label" style="margin-top:16px">Other Cases (' + unrendered.length + ')</div>';
+    html += unrendered.map(c => caseCard(c, !!completedReviews[c.id])).join('');
   }
 
   // Completed reviews summary table
