@@ -424,7 +424,7 @@ tr:hover td{background:var(--surface2)}
 
 <!-- MY CASES (reviewer view) -->
 <div id="tab-mycases" class="tab-content">
-  <div id="myCasesContent"></div>
+  <div id="myCasesBody"></div>
 </div>
 
 <!-- L&S -->
@@ -854,6 +854,7 @@ async function saveQueueToSupabase(queue, stats) {
     xhr.send(payload);
     console.log('PATCH status: ' + xhr.status + ' ' + xhr.statusText);
     if (xhr.status >= 200 && xhr.status < 300) {
+      console.log('Queue save complete');
       console.log('Queue saved successfully to Supabase');
       var b = document.getElementById('bannerText');
       if (b) { b.textContent = '🟢 LIVE — Supabase · ' + slimQueue.length + ' cases saved · ' + (stats.date_range||''); b.style.color = 'var(--green)'; }
@@ -1644,13 +1645,13 @@ function caseCard(c, completed=false) {
     : outcome==='Provider Feedback' ? 'var(--accent2)'
     : outcome==='Required Education' ? 'var(--yellow)'
     : outcome==='CRC Required' ? 'var(--red)' : 'var(--muted)';
+  const submittedAt = rev && rev.clinical ? rev.clinical.submittedAt : rev && rev.ls ? rev.ls.submittedAt : null;
   const outLine = outcome
     ? '<div style="margin-top:6px;font-size:11px;color:' + outColor + '">'
         + outcome
         + (submittedAt ? ' &nbsp;&middot;&nbsp; <span style="color:var(--muted)">' + submittedAt + '</span>' : '')
         + '</div>'
     : '';
-  const submittedAt = rev && rev.clinical ? (rev.clinical && rev.clinical.submittedAt) : rev && rev.ls ? rev.ls.submittedAt : null;
   const borderStyle = rev ? 'border-left:3px solid var(--green);' : '';
   const sceneSec = parseInt(c.scene_time_sec) || 0;
   const scene = sceneSec > 0 ? (Math.floor(sceneSec/60) + 'm ' + (sceneSec%60) + 's' + (sceneSec>1800?' !':'')) : 'N/A';
@@ -3766,7 +3767,7 @@ function openStatDrill(filter) {
       var pct  = rev && rev.clinical ? Math.round(rev.clinical.pct*100)
                 : rev && rev.ls      ? Math.round(rev.ls.pct*100)
                 : null;
-      var isRTOSOnlyD = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
+      var isRTOSOnlyQ = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
       var done = !!rev;
       var chip = pct !== null
         ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
