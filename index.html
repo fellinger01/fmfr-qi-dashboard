@@ -848,11 +848,23 @@ async function saveQueueToSupabase(queue, stats) {
       saved_at:   new Date().toISOString(),
       saved_by:   currentUser ? currentUser.name : 'system',
     };
-    const res = await fetch(SUPABASE_URL + '/rest/v1/qi_queue', {
-      method:  'POST',
-      headers: sbHeaders({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-      body:    JSON.stringify([row]),
+    // First try to update existing row, then insert if not exists
+    const patchRes = await fetch(SUPABASE_URL + '/rest/v1/qi_queue?id=eq.current', {
+      method:  'PATCH',
+      headers: sbHeaders({ 'Prefer': 'return=minimal' }),
+      body:    JSON.stringify(row),
     });
+    var res;
+    if (patchRes.status === 404 || patchRes.headers.get('content-range') === '*/0') {
+      // Row doesn't exist yet — insert it
+      res = await fetch(SUPABASE_URL + '/rest/v1/qi_queue', {
+        method:  'POST',
+        headers: sbHeaders({ 'Prefer': 'return=minimal' }),
+        body:    JSON.stringify([row]),
+      });
+    } else {
+      res = patchRes;
+    }
     if (!res.ok) {
       const t = await res.text();
       console.error('Queue save FAILED:', t);
@@ -3608,11 +3620,16 @@ async function savePin(name) {
   if (isSupabaseConfigured()) {
     try {
       var pinStore2 = JSON.parse(localStorage.getItem('FMFR_QI_pins') || '{}');
-      fetch(SUPABASE_URL + '/rest/v1/qi_queue', {
-        method: 'POST',
-        headers: Object.assign({'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'}, sbHeaders()),
-        body: JSON.stringify({ id: 'pins', queue_data: pinStore2, stats_data: {}, saved_by: currentUser ? currentUser.name : 'admin' })
-      }).catch(function(e){ console.warn('PIN save to Supabase failed:', e); });
+      fetch(SUPABASE_URL + '/rest/v1/qi_queue?id=eq.pins', {
+        method: 'PATCH',
+        headers: sbHeaders(),
+        body: JSON.stringify({ queue_data: pinStore2, stats_data: {}, saved_by: currentUser ? currentUser.name : 'admin' })
+      }).then(function(r){ if(r.status===404||r.headers.get('content-range')==='*/0') {
+        fetch(SUPABASE_URL + '/rest/v1/qi_queue', {
+          method: 'POST', headers: sbHeaders(),
+          body: JSON.stringify([{ id:'pins', queue_data: pinStore2, stats_data:{}, saved_by: currentUser?currentUser.name:'admin' }])
+        });
+      }}).catch(function(e){ console.warn('PIN save to Supabase failed:', e); });
     } catch(e) {}
   }
 
