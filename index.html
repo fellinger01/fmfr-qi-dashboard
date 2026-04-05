@@ -1293,12 +1293,14 @@ function sortQueue(key) {
 }
 function renderQueue(data) {
   const rows = data.map(c => {
-    const scoreInfo = completedReviews[c.id] && completedReviews[c.id].clinical;
-    const pct = scoreInfo ? Math.round(scoreInfo.pct * 100) : null;
-    const scoreHtml = pct !== null
-      ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
-      : isRTOSOnlyD ? '<span class="score-chip score-ac">Reviewed</span>'
-      : '<span class="score-chip score-na">Pending</span>';
+    const rev_q = completedReviews[c.id];
+    const scoreInfo = rev_q && rev_q.clinical;
+    const pct = scoreInfo ? Math.round(scoreInfo.pct * 100) : rev_q && rev_q.ls ? Math.round(rev_q.ls.pct*100) : null;
+    const isRTOSOnlyQ = rev_q && !rev_q.clinical && !rev_q.ls && (rev_q.rt || rev_q.os);
+    const scoreHtml = isRTOSOnlyQ ? '<span class="score-chip score-ac">Reviewed</span>'
+      : pct !== null
+        ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
+        : '<span class="score-chip score-na">Pending</span>';
     const doneBadge = scoreInfo ? '<span style="font-size:10px;color:var(--green)">&#10003;</span>' : '';
     return '<tr>' +
       '<td style="font-family:var(--mono);color:var(--accent2);cursor:pointer;text-decoration:underline" onclick="openScorecard(this.dataset.id)" data-id="' + c.id + '" title="Open scorecard">' + c.id + '</td>' +
