@@ -1270,7 +1270,7 @@ function renderQueue(data) {
       '<td>' + losTag(c.los) + '</td>' +
       '<td style="font-size:11px">' + (c.emd||'N/A') + '</td>' +
       '<td style="font-size:11px">' + (c.impression||'N/A') + '</td>' +
-      '<td style="max-width:220px">' + c.triggers.map(tTag).join('') + '</td>' +
+      '<td style="max-width:220px">' + (c.triggers||[]).map(tTag).join('') + '</td>' +
       '<td>' + statusPill(c.assigned_to) + '</td>' +
       '<td>' + fmtScene(c.scene_time_sec) + '</td>' +
       '<td style="font-size:11px;color:var(--muted)">' + (c.shift||'N/A') + '</td>' +
@@ -1353,7 +1353,7 @@ function initReviewers() {
         + '<td><strong>' + (c.lead||'N/A') + '</strong></td>'
         + '<td>' + losTag(c.los) + '</td>'
         + '<td style="font-size:11px">' + (c.emd||'N/A') + '</td>'
-        + '<td>' + c.triggers.map(tTag).join('') + '</td>'
+        + '<td>' + (c.triggers||[]).map(tTag).join('') + '</td>'
         + '<td>' + fmtScene(c.scene_time_sec) + '</td>'
         + '<td>' + rchip + '</td>'
         + '<td>' + outbadge + '</td>'
@@ -1428,7 +1428,7 @@ function initReviewers() {
         + '<td><strong>' + (c.lead||'N/A') + '</strong></td>'
         + '<td>' + losTag(c.los) + '</td>'
         + '<td style="font-size:11px">' + (c.emd||'N/A') + '</td>'
-        + '<td>' + c.triggers.map(tTag).join('') + '</td>'
+        + '<td>' + (c.triggers||[]).map(tTag).join('') + '</td>'
         + '<td>' + fmtScene(c.scene_time_sec) + '</td>'
         + '<td>' + rchip + '</td>'
         + '<td>' + outbadge + '</td>'
@@ -1548,7 +1548,7 @@ function initEscalations() {
               ? rev.coordinator_disposition : '';
             const outcomeRow = outcome
               ? '<div style="font-size:11px;color:' + outclr + ';margin-top:4px">' + outcome
-                  + (rev.clinical.submittedAt ? ' &middot; <span style="color:var(--muted)">' + rev.clinical.submittedAt + '</span>' : '')
+                  + ((rev && rev.clinical && (rev.clinical && rev.clinical.submittedAt)) ? ' &middot; <span style="color:var(--muted)">' + (rev.clinical && rev.clinical.submittedAt) + '</span>' : '')
                   + '</div>'
                 + (escReason ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(248,81,73,.07);border-left:3px solid var(--red);border-radius:0 4px 4px 0;font-size:11px;color:var(--text);line-height:1.5"><strong style=\"color:var(--red)\">Escalation Reason:</strong> ' + escReason + '</div>' : '')
                 + (coordDisp ? '<div style="margin-top:6px;padding:8px 10px;background:rgba(63,185,80,.07);border-left:3px solid var(--green);border-radius:0 4px 4px 0;font-size:11px;color:var(--text);line-height:1.5"><strong style=\"color:var(--green)\">Coordinator Disposition:</strong> ' + coordDisp + '</div>' : '')
@@ -1563,7 +1563,7 @@ function initEscalations() {
                   + '<span style="font-family:var(--mono);font-size:11px;color:var(--muted)">' + c.date + '</span>'
                 + '</div>'
               + '</div>'
-              + '<div style="margin-bottom:8px">' + c.triggers.map(tTag).join('') + '</div>'
+              + '<div style="margin-bottom:8px">' + (c.triggers||[]).map(tTag).join('') + '</div>'
               + '<div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:5px;color:var(--muted)">'
                 + '<div>Lead: <strong style="color:var(--text)">' + (c.lead||'N/A') + '</strong></div>'
                 + '<div>LOS: ' + losTag(c.los) + '</div>'
@@ -1607,11 +1607,13 @@ function caseCard(c, completed=false) {
   const outLine = outcome
     ? '<div style="margin-top:6px;font-size:11px;color:' + outColor + '">'
         + outcome
-        + (rev.clinical.submittedAt ? ' &nbsp;&middot;&nbsp; <span style="color:var(--muted)">' + rev.clinical.submittedAt + '</span>' : '')
+        + (submittedAt ? ' &nbsp;&middot;&nbsp; <span style="color:var(--muted)">' + submittedAt + '</span>' : '')
         + '</div>'
     : '';
+  const submittedAt = rev && rev.clinical ? (rev.clinical && rev.clinical.submittedAt) : rev && rev.ls ? rev.ls.submittedAt : null;
   const borderStyle = rev ? 'border-left:3px solid var(--green);' : '';
-  const scene = c.scene_time_sec ? (Math.floor(c.scene_time_sec/60) + 'm ' + (c.scene_time_sec%60) + 's' + (c.scene_time_sec>1800?' !':'')) : 'N/A';
+  const sceneSec = parseInt(c.scene_time_sec) || 0;
+  const scene = sceneSec > 0 ? (Math.floor(sceneSec/60) + 'm ' + (sceneSec%60) + 's' + (sceneSec>1800?' !':'')) : 'N/A';
   return '<div class="my-case-card' + (completed?' complete':'') + '" style="' + borderStyle + 'cursor:pointer" onclick="openScorecard(this.dataset.id)" data-id="' + c.id + '">'
     + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'
       + '<div>'
@@ -1629,7 +1631,7 @@ function caseCard(c, completed=false) {
         + '</div>'
         + outLine
       + '</div>'
-      + '<div>' + c.triggers.map(tTag).join('') + '</div>'
+      + '<div>' + (c.triggers||[]).map(tTag).join('') + '</div>'
     + '</div>'
   + '</div>';
 }
@@ -1656,7 +1658,7 @@ function initMyCases() {
 
   if (mandatory.length > 0) {
     html += '<div class="sec-label" style="margin-top:' + (isCoord?'16px':'0') + '">Mandatory 100% Review Cases (' + mandatory.length + ')</div>';
-    html += mandatory.map(c => { renderedIds.add(c.id); return caseCard(c, !!completedReviews[c.id]); }).join('');
+    html += mandatory.map(c => { renderedIds.add(c.id); try { return caseCard(c, !!completedReviews[c.id]); } catch(e) { return '<div style="color:var(--red);font-size:11px;padding:8px">Error rendering ' + c.id + ': ' + e.message + '</div>'; } }).join('');
   }
   if (ls.length > 0) {
     html += '<div class="sec-label" style="margin-top:16px">L&S Transport Cases (' + ls.length + ')</div>';
@@ -1670,7 +1672,7 @@ function initMyCases() {
   const unrendered = myCases.filter(c => !renderedIds.has(c.id));
   if (unrendered.length > 0) {
     html += '<div class="sec-label" style="margin-top:16px">Other Cases (' + unrendered.length + ')</div>';
-    html += unrendered.map(c => caseCard(c, !!completedReviews[c.id])).join('');
+    html += unrendered.map(c => { try { return caseCard(c, !!completedReviews[c.id]); } catch(e) { return '<div style="color:var(--red);font-size:11px;padding:8px">Error rendering ' + c.id + ': ' + e.message + '</div>'; } }).join('');
   }
 
   // Completed reviews summary table
@@ -1696,7 +1698,7 @@ function initMyCases() {
         + '<td style="font-family:var(--mono);color:var(--accent2);cursor:pointer;text-decoration:underline" onclick="openScorecard(this.dataset.id)" data-id="' + c.id + '">' + c.id + '</td>'
         + '<td style="font-size:11px;color:var(--muted)">' + c.date + '</td>'
         + '<td><strong>' + (c.lead||'N/A') + '</strong></td>'
-        + '<td>' + c.triggers.map(tTag).join('') + '</td>'
+        + '<td>' + (c.triggers||[]).map(tTag).join('') + '</td>'
         + '<td>' + chip + '</td>'
         + '<td><span style="font-size:11px;color:' + outclr + '">' + outc + '</span>' + crcBadge + '</td>'
         + '<td style="font-size:10px;color:var(--muted)">' + (hasClin ? r.clinical.submittedAt : hasLS ? r.ls.submittedAt : '') + '</td>'
@@ -3744,7 +3746,7 @@ function openStatDrill(filter) {
         + '<td><strong>' + (c.lead||'N/A') + '</strong></td>'
         + '<td>' + losTag(c.los) + '</td>'
         + '<td style="font-size:11px">' + (c.emd||'N/A') + '</td>'
-        + '<td style="max-width:200px">' + c.triggers.map(tTag).join('') + '</td>'
+        + '<td style="max-width:200px">' + (c.triggers||[]).map(tTag).join('') + '</td>'
         + '<td style="font-family:var(--mono);font-size:11px">' + (c.assigned_to||'') + '</td>'
         + '<td>' + chip + '</td>'
         + '<td>' + statusIcon + '</td>'
