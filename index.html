@@ -3510,14 +3510,13 @@ function confirmImport() {
     + 'Navigate to Overview or Review Queue to begin.';
 
   // Save queue to Supabase so all users get it on next login
-  saveQueueToSupabase(queue, stats).then(function() {
-    console.log('Queue persisted to Supabase');
+  saveQueueToSupabase(queue, stats).then(function(result) {
+    console.log('Queue save complete');
+    alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
+  }).catch(function(e) {
+    console.error('Queue save error:', e);
+    alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
   });
-
-  // Restore button
-  if (btn) { btn.disabled = false; btn.textContent = origBtnText || '⚙ Process & Preview Import'; }
-
-  alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
 }
 
 
