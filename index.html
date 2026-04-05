@@ -817,9 +817,33 @@ function clearReviews() {
 async function saveQueueToSupabase(queue, stats) {
   if (!isSupabaseConfigured()) return;
   try {
+    // Slim queue before saving — keep only fields needed for display and scorecard access
+    const slimQueue = queue.map(function(c) {
+      return {
+        id:          c.id,
+        date:        c.date,
+        lead:        c.lead,
+        crew:        c.crew,
+        los:         c.los,
+        emd:         c.emd,
+        impression:  c.impression,
+        triggers:    c.triggers,
+        is_mandatory: c.is_mandatory,
+        is_flagged:  c.is_flagged,
+        shift:       c.shift,
+        ls_transport: c.ls_transport,
+        ls_response: c.ls_response,
+        scene_time_sec: c.scene_time_sec,
+        assigned_to: c.assigned_to,
+        auto_escalated: c.auto_escalated || false,
+        treatments:  c.treatments || [],
+        disposition: c.disposition || '',
+        injury:      c.injury || '',
+      };
+    });
     const row = {
       id:         'current',
-      queue_data: queue,
+      queue_data: slimQueue,
       stats_data: stats,
       saved_at:   new Date().toISOString(),
       saved_by:   currentUser ? currentUser.name : 'system',
@@ -831,9 +855,13 @@ async function saveQueueToSupabase(queue, stats) {
     });
     if (!res.ok) {
       const t = await res.text();
-      console.warn('Queue save failed:', t);
+      console.error('Queue save FAILED:', t);
+      var banner = document.getElementById('bannerText');
+      if (banner) { banner.textContent = '🔴 Queue save failed — ' + t.substring(0,100); banner.style.color = 'var(--red)'; }
     } else {
       console.log('Queue saved to Supabase: ' + queue.length + ' cases');
+      var banner2 = document.getElementById('bannerText');
+      if (banner2) { banner2.textContent = '🟢 LIVE — Supabase · ' + queue.length + ' cases saved · ' + (stats.date_range||''); banner2.style.color = 'var(--green)'; }
     }
   } catch(e) {
     console.warn('Queue save error:', e.message);
@@ -848,7 +876,16 @@ async function loadQueueFromSupabase() {
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const rows = await res.json();
-    if (!rows.length || !rows[0].queue_data || !rows[0].queue_data.length) return false;
+    console.log('Supabase queue row:', rows.length ? 'found' : 'EMPTY', rows.length ? ('queue_data length: ' + (rows[0].queue_data ? rows[0].queue_data.length : 'NULL')) : '');
+    if (!rows.length || !rows[0].queue_data || !rows[0].queue_data.length) {
+      // stats_data may still be useful even if queue_data is missing
+      if (rows.length && rows[0].stats_data) {
+        Object.keys(STATS).forEach(function(k){ delete STATS[k]; });
+        Object.assign(STATS, rows[0].stats_data);
+        console.warn('Queue data missing from Supabase — only stats loaded. Re-import ESO CSVs to restore queue.');
+      }
+      return false;
+    }
     const row = rows[0];
     // Load queue into memory
     QUEUE.length = 0;
