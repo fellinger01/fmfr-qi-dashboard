@@ -815,68 +815,57 @@ function clearReviews() {
 
 // ── Queue persistence — saves/loads QUEUE and STATS to Supabase qi_queue table ─
 async function saveQueueToSupabase(queue, stats) {
-  if (!isSupabaseConfigured()) return;
+  if (!isSupabaseConfigured()) {
+    console.warn('saveQueueToSupabase: Supabase not configured');
+    return;
+  }
   try {
-    // Slim queue before saving — keep only fields needed for display and scorecard access
     const slimQueue = queue.map(function(c) {
       return {
-        id:          c.id,
-        date:        c.date,
-        lead:        c.lead,
-        crew:        c.crew,
-        los:         c.los,
-        emd:         c.emd,
-        impression:  c.impression,
-        triggers:    c.triggers,
-        is_mandatory: c.is_mandatory,
-        is_flagged:  c.is_flagged,
-        shift:       c.shift,
-        ls_transport: c.ls_transport,
-        ls_response: c.ls_response,
-        scene_time_sec: c.scene_time_sec,
-        assigned_to: c.assigned_to,
+        id: c.id, date: c.date, lead: c.lead, crew: c.crew,
+        los: c.los, emd: c.emd, impression: c.impression,
+        triggers: c.triggers, is_mandatory: c.is_mandatory,
+        is_flagged: c.is_flagged, shift: c.shift,
+        ls_transport: c.ls_transport, ls_response: c.ls_response,
+        scene_time_sec: c.scene_time_sec, assigned_to: c.assigned_to,
         auto_escalated: c.auto_escalated || false,
-        treatments:  c.treatments || [],
-        disposition: c.disposition || '',
-        injury:      c.injury || '',
+        treatments: c.treatments || [], disposition: c.disposition || '',
+        injury: c.injury || '',
       };
     });
-    const row = {
-      id:         'current',
+    const payload = JSON.stringify({
+      id: 'current',
       queue_data: slimQueue,
       stats_data: stats,
-      saved_at:   new Date().toISOString(),
-      saved_by:   currentUser ? currentUser.name : 'system',
-    };
-    // First try to update existing row, then insert if not exists
-    const patchRes = await fetch(SUPABASE_URL + '/rest/v1/qi_queue?id=eq.current', {
-      method:  'PATCH',
-      headers: sbHeaders({ 'Prefer': 'return=minimal' }),
-      body:    JSON.stringify(row),
+      saved_at: new Date().toISOString(),
+      saved_by: currentUser ? currentUser.name : 'system',
     });
-    var res;
-    if (patchRes.status === 404 || patchRes.headers.get('content-range') === '*/0') {
-      // Row doesn't exist yet — insert it
-      res = await fetch(SUPABASE_URL + '/rest/v1/qi_queue', {
-        method:  'POST',
-        headers: sbHeaders({ 'Prefer': 'return=minimal' }),
-        body:    JSON.stringify([row]),
-      });
+    console.log('Saving queue: ' + slimQueue.length + ' cases, payload ' + Math.round(payload.length/1024) + 'KB');
+    console.log('URL: ' + SUPABASE_URL);
+    console.log('Key starts with: ' + SUPABASE_ANON_KEY.substring(0,20));
+
+    // Use XMLHttpRequest synchronously to guarantee completion
+    var xhr = new XMLHttpRequest();
+    xhr.open('PATCH', SUPABASE_URL + '/rest/v1/qi_queue?id=eq.current', false); // false = synchronous
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_ANON_KEY);
+    xhr.setRequestHeader('Prefer', 'return=minimal');
+    xhr.send(payload);
+    console.log('PATCH status: ' + xhr.status + ' ' + xhr.statusText);
+    if (xhr.status >= 200 && xhr.status < 300) {
+      console.log('Queue saved successfully to Supabase');
+      var b = document.getElementById('bannerText');
+      if (b) { b.textContent = '🟢 LIVE — Supabase · ' + slimQueue.length + ' cases saved · ' + (stats.date_range||''); b.style.color = 'var(--green)'; }
     } else {
-      res = patchRes;
-    }
-    if (!res.ok) {
-      const t = await res.text();
-      console.error('Queue save FAILED:', t);
-      var banner = document.getElementById('bannerText');
-      if (banner) { banner.textContent = '🔴 Queue save failed — ' + t.substring(0,100); banner.style.color = 'var(--red)'; }
-    } else {
-      console.log('Queue saved to Supabase: ' + queue.length + ' cases');
-      var banner2 = document.getElementById('bannerText');
-      if (banner2) { banner2.textContent = '🟢 LIVE — Supabase · ' + queue.length + ' cases saved · ' + (stats.date_range||''); banner2.style.color = 'var(--green)'; }
+      console.error('PATCH failed: ' + xhr.status + ' — ' + xhr.responseText);
+      var b2 = document.getElementById('bannerText');
+      if (b2) { b2.textContent = '🔴 Save failed: ' + xhr.status + ' — ' + xhr.responseText.substring(0,80); b2.style.color = 'var(--red)'; }
     }
   } catch(e) {
-    console.warn('Queue save error:', e.message);
+    console.error('saveQueueToSupabase exception:', e.message);
+    var b3 = document.getElementById('bannerText');
+    if (b3) { b3.textContent = '🔴 Save error: ' + e.message; b3.style.color = 'var(--red)'; }
   }
 }
 
@@ -3509,14 +3498,9 @@ function confirmImport() {
     + 'QUEUE and STATS updated in memory.\n'
     + 'Navigate to Overview or Review Queue to begin.';
 
-  // Save queue to Supabase so all users get it on next login
-  saveQueueToSupabase(queue, stats).then(function(result) {
-    console.log('Queue save complete');
-    alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
-  }).catch(function(e) {
-    console.error('Queue save error:', e);
-    alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
-  });
+  // Save queue to Supabase synchronously so all users get it on next login
+  saveQueueToSupabase(queue, stats);
+  alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
 }
 
 
