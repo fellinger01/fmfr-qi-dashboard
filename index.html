@@ -1185,8 +1185,8 @@ function initOverview() {
   });
 
   if (true) { // always redraw
-    const tc = STATS.trigger_counts;
-    const labels = Object.keys(tc), vals = Object.values(tc);
+    const tc = STATS.trigger_counts || {};
+    const labels = Object.keys(tc||{}), vals = Object.values(tc||{});
     const cmap = {'tag-red':'#f85149','tag-orange':'#f0883e','tag-yellow':'#d29922','tag-blue':'#388bfd','tag-purple':'#bc8cff','tag-green':'#3fb950','tag-gray':'#30363d'};
     const colors = labels.map(l => cmap[TRIG_STYLE[l]||'tag-gray']||'#555');
     const chartOpts = { color:'#8b949e', font:{family:'IBM Plex Mono',size:9} };
@@ -1230,9 +1230,9 @@ function initOverview() {
     Harris:     ['rgba(188,140,255,.15)','var(--purple)', 'RH', 'EMT · BLS only'],
     Felldin:    ['rgba(240,136,62,.15)','var(--accent)',  'BF', 'EMT · BLS only'],
   };
-  const maxLoad = Math.max(...Object.values(STATS.load));
+  const maxLoad = STATS.load && Object.values(STATS.load).length ? Math.max(...Object.values(STATS.load)) : 1;
 
-  const revHtml = Object.entries(STATS.load).map(([name,cnt]) => {
+  const revHtml = Object.entries(STATS.load || {}).map(([name,cnt]) => {
     const [bg,clr,ini,cert] = RINFO[name]||['rgba(139,148,158,.2)','var(--muted)',name[0],''];
     const myDone = QUEUE.filter(c=>c.assigned_to===name && completedReviews[c.id]).length;
     const donePct = cnt>0?(myDone/cnt*100).toFixed(0):0;
@@ -1508,7 +1508,7 @@ function initReviewers() {
 
 // ── PROVIDERS (coordinator only) ──
 function initProviders() {
-  const ps = STATS.prov_stats;
+  const ps = STATS.prov_stats || {};
   document.getElementById('provBody').innerHTML = Object.entries(ps).map(([name,d]) => {
     const inQ = QUEUE.filter(c=>c.lead===name).length;
     // Avg score for this provider from sandbox reviews
