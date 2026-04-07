@@ -3292,20 +3292,40 @@ async function _doProcessImport(btn, origBtnText) {
 
   var alsIdx=0, blsIdx=0, coordIdx=0;
   const COORD_REVIEWERS = ['Steere','Ellinger']; // Overberger notified but not assigned
+
+  // Assign from a pool, skipping any reviewer whose last name matches the lead provider
+  function assignFrom(pool, startIdx, leadLastName) {
+    var tries = 0;
+    while (tries < pool.length) {
+      var candidate = pool[startIdx % pool.length];
+      startIdx++;
+      tries++;
+      // Skip if reviewer's last name matches the case lead (can't review own calls)
+      if (leadLastName && candidate.toLowerCase() === leadLastName.toLowerCase()) continue;
+      return { assigned: candidate, nextIdx: startIdx };
+    }
+    // Fallback: if all reviewers are the same person (unlikely), assign anyway
+    return { assigned: pool[startIdx % pool.length], nextIdx: startIdx + 1 };
+  }
+
   queue.forEach(function(c) {
     const isRTOnly = c.triggers.length === 1 && c.triggers[0] === 'Response Time >15 min';
     const isOSOnly = c.triggers.length === 1 && c.triggers[0] === 'On-Scene Time >30 min';
     const isAutoEsc = c.triggers.some(function(t){ return AUTO_ESC_TRIGGERS.has(t); }) || isRTOnly || isOSOnly;
+    const lead = (c.lead || '').trim();
     if (isAutoEsc) {
-      c.assigned_to = COORD_REVIEWERS[coordIdx % COORD_REVIEWERS.length];
+      var res = assignFrom(COORD_REVIEWERS, coordIdx, lead);
+      c.assigned_to = res.assigned;
+      coordIdx = res.nextIdx;
       c.auto_escalated = true;
-      coordIdx++;
     } else if (isALSCase(c)) {
-      c.assigned_to = ALS_REVIEWERS[alsIdx % ALS_REVIEWERS.length];
-      alsIdx++;
+      var res = assignFrom(ALS_REVIEWERS, alsIdx, lead);
+      c.assigned_to = res.assigned;
+      alsIdx = res.nextIdx;
     } else {
-      c.assigned_to = BLS_REVIEWERS[blsIdx % BLS_REVIEWERS.length];
-      blsIdx++;
+      var res = assignFrom(BLS_REVIEWERS, blsIdx, lead);
+      c.assigned_to = res.assigned;
+      blsIdx = res.nextIdx;
     }
   });
   logLine('Reviewer assignments complete');
