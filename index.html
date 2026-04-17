@@ -188,7 +188,7 @@ tr:hover td{background:var(--surface2)}
       <option>Jeff Steere</option>
       <option>Ryan Overberger</option>
       <option>Scott Kristiniak</option>
-      <option>Bryn Armentrout</option>
+      <option>Bryan Armentrout</option>
       <option>Rob Harris</option>
       <option>Brandon Felldin</option>
     </select>
@@ -613,13 +613,13 @@ tr:hover td{background:var(--surface2)}
 const QUEUE = [];
 const STATS = {"total": 0, "als": 0, "bls": 0, "unknown_los": 0, "mandatory": 0, "flagged": 0, "rand_als": 0, "rand_bls": 0, "review_total": 0, "load": {}, "ls_response": 0, "ls_transport": 0, "date_range": "No period loaded \u2014 use ESO Import to load cases", "trigger_counts": {}, "prov_stats": {}};
 const USERS = {
-  'Fred Ellinger': { pin:'fe675fe7aaee830b6fed09b64e034f84dcbdaeb429d9cccd4ebb90e15af8dd71', role:'coordinator', initials:'FE', color:'#f0883e', reviewer_key:null },
-  'Jeff Steere': { pin:'b281bc2c616cb3c3a097215fdc9397ae87e6e06b156cc34e656be7a1a9ce8839', role:'coordinator', initials:'JS', color:'#388bfd', reviewer_key:null },
-  'Ryan Overberger': { pin:'8c9a013ab70c0434313e3e881c310b9ff24aff1075255ceede3f2c239c231623', role:'coordinator', initials:'RO', color:'#3fb950', reviewer_key:null },
-  'Scott Kristiniak': { pin:'85d6385b945c0d602103db39b0b654b2af93b5127938e26a959c123f0789b948', role:'reviewer', initials:'SK', color:'#bc8cff', reviewer_key:'Kristiniak' },
-  'Bryn Armentrout': { pin:'6c94e35ccc352d4e9ef0b99562cff995a5741ce8de8ad11b568892934daee366', role:'reviewer', initials:'BA', color:'#f85149', reviewer_key:'Armentrout' },
-  'Rob Harris': { pin:'77459b9b941bcb4714d0c121313c900ecf30541d158eb2b9b178cdb8eca6457e', role:'reviewer', initials:'RH', color:'#d29922', reviewer_key:'Harris' },
-  'Brandon Felldin': { pin:'483029d526219f816e8e8f6a9de07b422633dba180ffc26faac22862a017519f', role:'reviewer', initials:'BF', color:'#58a6ff', reviewer_key:'Felldin' },
+  'Fred Ellinger':   { pin:'194af3b3d7b007443c26af23c035430b0afb9abebf8c89432884147fc41af759', role:'coordinator', initials:'FE', color:'#f0883e', reviewer_key:null },
+  'Jeff Steere':     { pin:'25f9525ece71bbb5beb98beb01b793a8e900a1cc4fc5891b1948746272da9792', role:'coordinator', initials:'JS', color:'#388bfd', reviewer_key:null },
+  'Ryan Overberger': { pin:'fe675fe7aaee830b6fed09b64e034f84dcbdaeb429d9cccd4ebb90e15af8dd71', role:'coordinator', initials:'RO', color:'#3fb950', reviewer_key:null },
+  'Scott Kristiniak':{ pin:'92558c434783e42c876aecb2be96e48437a4ecfea46f5b61ca4d522836135ed9', role:'reviewer',    initials:'SK', color:'#bc8cff', reviewer_key:'Kristiniak' },
+  'Bryan Armentrout':{ pin:'b2c8e6d23d512b709af2c7f5e339d0b64d71ff5b572f1b471598d66e1ef61ad5', role:'reviewer',    initials:'BA', color:'#f85149', reviewer_key:'Armentrout' },
+  'Rob Harris':      { pin:'efb092e03612f568901dc7504b50a6c888a3b0734f7ad9e8d6b43ea2232b1124', role:'reviewer',    initials:'RH', color:'#d29922', reviewer_key:'Harris' },
+  'Brandon Felldin': { pin:'cab3c9da252d39d384da572a2f04ad33c30cc92f166c33adaaac2533ebd385c9', role:'reviewer',    initials:'BF', color:'#58a6ff', reviewer_key:'Felldin' },
 };
 
 let queueData = QUEUE.slice();
@@ -3622,16 +3622,15 @@ async function savePin(name) {
       // Build fresh pin store from current USERS object (source of truth)
       var pinStore2 = {};
       Object.keys(USERS).forEach(function(n){ pinStore2[n] = USERS[n].pin; });
-      fetch(SUPABASE_URL + '/rest/v1/qi_queue?id=eq.pins', {
-        method: 'PATCH',
-        headers: sbHeaders(),
-        body: JSON.stringify({ queue_data: pinStore2, stats_data: {}, saved_by: currentUser ? currentUser.name : 'admin' })
-      }).then(function(r){ if(r.status===404||r.headers.get('content-range')==='*/0') {
-        fetch(SUPABASE_URL + '/rest/v1/qi_queue', {
-          method: 'POST', headers: sbHeaders(),
-          body: JSON.stringify([{ id:'pins', queue_data: pinStore2, stats_data:{}, saved_by: currentUser?currentUser.name:'admin' }])
-        });
-      }}).catch(function(e){ console.warn('PIN save to Supabase failed:', e); });
+      // Use synchronous XHR to guarantee PIN save completes
+      var xhrPin = new XMLHttpRequest();
+      xhrPin.open('PATCH', SUPABASE_URL + '/rest/v1/qi_queue?id=eq.pins', false);
+      xhrPin.setRequestHeader('Content-Type', 'application/json');
+      xhrPin.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+      xhrPin.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_ANON_KEY);
+      xhrPin.setRequestHeader('Prefer', 'return=minimal');
+      xhrPin.send(JSON.stringify({ queue_data: pinStore2, stats_data: {}, saved_by: currentUser ? currentUser.name : 'admin' }));
+      console.log('PIN save PATCH status: ' + xhrPin.status);
     } catch(e) {}
   }
 
