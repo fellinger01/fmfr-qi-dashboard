@@ -3616,16 +3616,12 @@ async function savePin(name) {
 
   USERS[name].pin = hash;
 
-  // Persist PIN changes to localStorage AND Supabase
-  try {
-    var pinStore = JSON.parse(localStorage.getItem('FMFR_QI_pins') || '{}');
-    pinStore[name] = hash;
-    localStorage.setItem('FMFR_QI_pins', JSON.stringify(pinStore));
-  } catch(e) {}
-  // Save to Supabase so PINs persist across devices
+  // Save PIN to Supabase only — localStorage removed to prevent stale PIN reversion
   if (isSupabaseConfigured()) {
     try {
-      var pinStore2 = JSON.parse(localStorage.getItem('FMFR_QI_pins') || '{}');
+      // Build fresh pin store from current USERS object (source of truth)
+      var pinStore2 = {};
+      Object.keys(USERS).forEach(function(n){ pinStore2[n] = USERS[n].pin; });
       fetch(SUPABASE_URL + '/rest/v1/qi_queue?id=eq.pins', {
         method: 'PATCH',
         headers: sbHeaders(),
@@ -3645,15 +3641,8 @@ async function savePin(name) {
   alert('PIN updated for ' + name + '.\n\nThey can now log in with their new PIN.');
 }
 
-// Load any previously saved custom PINs on startup (localStorage first, then Supabase)
-(function loadCustomPins() {
-  try {
-    var pinStore = JSON.parse(localStorage.getItem('FMFR_QI_pins') || '{}');
-    Object.keys(pinStore).forEach(function(name) {
-      if (USERS[name]) USERS[name].pin = pinStore[name];
-    });
-  } catch(e) {}
-})();
+// PINs are loaded exclusively from Supabase in setupUI → loadPinsFromSupabase()
+// localStorage PIN cache removed to prevent stale PINs overwriting Supabase values
 
 // Also load PINs from Supabase (overrides localStorage — Supabase is source of truth)
 async function loadPinsFromSupabase() {
@@ -3669,8 +3658,7 @@ async function loadPinsFromSupabase() {
       Object.keys(pinStore).forEach(function(name) {
         if (USERS[name]) USERS[name].pin = pinStore[name];
       });
-      // Update localStorage too
-      try { localStorage.setItem('FMFR_QI_pins', JSON.stringify(pinStore)); } catch(e) {}
+      console.log('PINs loaded from Supabase for: ' + Object.keys(pinStore).join(', '));
     }
   } catch(e) { console.warn('PIN load from Supabase failed:', e); }
 }
