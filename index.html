@@ -1391,6 +1391,7 @@ function initReviewers() {
       const outclr = outcome==='Positive Recognition'||outcome==='No Action Required'?'var(--green)':outcome==='Provider Feedback'?'var(--accent2)':outcome==='Required Education'?'var(--yellow)':outcome==='CRC Required'?'var(--red)':outcome==='Reviewed'?'var(--accent2)':'var(--muted)';
       const outbadge = outcome
         ? '<span style="font-size:10px;color:' + outclr + '">' + outcome + '</span>'
+        : rev ? '<span style="font-size:10px;color:var(--accent2)">Complete</span>'
         : '<span style="font-size:10px;color:var(--muted)">Pending</span>';
       return '<tr style="' + (rev?'background:rgba(63,185,80,.02)':'') + '">'
         + '<td style="font-family:var(--mono);color:var(--accent2);cursor:pointer;text-decoration:underline" onclick="openScorecard(this.dataset.id)" data-id="' + c.id + '">' + c.id + '</td>'
@@ -1483,7 +1484,10 @@ function initReviewers() {
                    : rev && rev.os && rev.os.findings ? rev.os.findings.outcome
                    : (rev && (rev.rt || rev.os)) ? 'Reviewed' : '';
       const outclr = outcome==='Positive Recognition'||outcome==='No Action Required'?'var(--green)':outcome==='Provider Feedback'?'var(--accent2)':outcome==='Required Education'?'var(--yellow)':outcome==='CRC Required'?'var(--red)':outcome==='Reviewed'?'var(--accent2)':'var(--muted)';
-      const outbadge = outcome ? '<span style="font-size:10px;color:'+outclr+'">' + outcome + '</span>' : '<span style="font-size:10px;color:var(--muted)">Pending</span>';
+      const outbadge = outcome
+        ? '<span style="font-size:10px;color:'+outclr+'">' + outcome + '</span>'
+        : rev ? '<span style="font-size:10px;color:var(--accent2)">Complete</span>'
+        : '<span style="font-size:10px;color:var(--muted)">Pending</span>';
       return '<tr><td style="font-family:var(--mono);color:var(--accent2);cursor:pointer;text-decoration:underline" onclick="openScorecard(this.dataset.id)" data-id="' + c.id + '">' + c.id + '</td>'
         + '<td style="font-family:var(--mono);font-size:11px;color:var(--muted)">' + c.date + '</td>'
         + '<td><strong>' + (c.lead||'N/A') + '</strong></td>'
@@ -2701,6 +2705,21 @@ function submitScorecard() {
     scFindings.escalation_reason = 'Clinical score ' + Math.round(pct*100) + '% — below 60% threshold. Mandatory CRC per Policy §5.1a. QI/QA Coordinator must initiate CRC within 5 business days. CRC must convene within 30 calendar days of call date.';
   }
 
+  // L&S-specific: require outcome selection
+  if (activeSCType === 'ls') {
+    if (!scFindings.outcome || scFindings.outcome.trim() === '') {
+      // Auto-set outcome based on whether E.1 was met
+      const e1 = scScores['ls_E.1'];
+      if (e1 && e1.met === true) {
+        scFindings.outcome = 'No Action Required';
+      } else if (e1 && e1.met === false) {
+        scFindings.outcome = 'Escalation — MD/Chief Review';
+      } else {
+        alert('Please complete item E.1 (Overall Justification Determination) before submitting.');
+        return;
+      }
+    }
+  }
   // OS-specific: escalate if O.1 NOT MET, require comment
   if (activeSCType === 'os') {
     const o1 = scScores['os_O.1'];
@@ -2714,6 +2733,13 @@ function submitScorecard() {
     }
   }
 
+  // RT-specific: auto-set outcome based on R.1
+  if (activeSCType === 'rt') {
+    if (!scFindings.outcome || scFindings.outcome.trim() === '') {
+      const r1 = scScores['rt_R.1'];
+      scFindings.outcome = (r1 && r1.met === true) ? 'No Action Required' : 'Provider Feedback';
+    }
+  }
   // L&S-specific: escalate if ANY item is NOT MET
   let lsEscalated = false;
   if (activeSCType === 'ls') {
