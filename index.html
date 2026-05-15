@@ -1383,8 +1383,12 @@ function initReviewers() {
         : pct===null
           ? '<span style="color:var(--muted);font-size:11px">Pending</span>'
           : '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
-      const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome : '';
-      const outclr = outcome==='Positive Recognition'||outcome==='No Action Required'?'var(--green)':outcome==='Provider Feedback'?'var(--accent2)':outcome==='Required Education'?'var(--yellow)':outcome==='CRC Required'?'var(--red)':'var(--muted)';
+      const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome
+                   : rev && rev.ls && rev.ls.findings ? rev.ls.findings.outcome
+                   : rev && rev.rt && rev.rt.findings ? rev.rt.findings.outcome
+                   : rev && rev.os && rev.os.findings ? rev.os.findings.outcome
+                   : (rev && (rev.rt || rev.os)) ? 'Reviewed' : '';
+      const outclr = outcome==='Positive Recognition'||outcome==='No Action Required'?'var(--green)':outcome==='Provider Feedback'?'var(--accent2)':outcome==='Required Education'?'var(--yellow)':outcome==='CRC Required'?'var(--red)':outcome==='Reviewed'?'var(--accent2)':'var(--muted)';
       const outbadge = outcome
         ? '<span style="font-size:10px;color:' + outclr + '">' + outcome + '</span>'
         : '<span style="font-size:10px;color:var(--muted)">Pending</span>';
@@ -1445,7 +1449,19 @@ function initReviewers() {
     const mandCount = cases.filter(function(c){ return c.is_mandatory; }).length;
     const lsCount = cases.filter(function(c){ return c.triggers.includes('L&S Transport') && !c.is_mandatory; }).length;
     const randCount = cases.filter(function(c){ return c.triggers.some(function(t){ return t.startsWith('Random'); }); }).length;
-    const doneCount = cases.filter(function(c){ return !!completedReviews[c.id]; }).length;
+    const doneCount = cases.filter(function(c){
+      const r = completedReviews[c.id];
+      if (!r) return false;
+      const needsClin = c.triggers.some(function(t){ return ['Cardiac Arrest','STEMI Alert','Stroke Alert','Advanced Airway','Ketamine Administration','Electrical Therapy','Physical Restraint','Aeromedical Transport','Patient Death','Patient Injury During Care','MCI','Medical Command Contact — Order Denied or Not Completed','Staff Injury or Equipment Damage','Antibiotic Administration','Treat & Release','Patient Refusal','ALS Downgrade to BLS — Not Per Protocol','Category 1/2 Trauma','Random Sample ALS','Random Sample BLS'].includes(t); });
+      const needsLS = c.triggers.includes('L&S Transport');
+      const needsRT = c.triggers.includes('Response Time >15 min');
+      const needsOS = c.triggers.includes('On-Scene Time >30 min');
+      if (needsClin && !r.clinical) return false;
+      if (needsLS && !r.ls) return false;
+      if (needsRT && !r.rt) return false;
+      if (needsOS && !r.os) return false;
+      return true;
+    }).length;
     const isCoordEntry = false;
     const headerTags = '<span class="tag tag-blue">' + cases.length + ' cases</span>'
       + (mandCount>0 ? ' <span class="tag tag-red">' + mandCount + ' mandatory</span>' : '')
@@ -1461,8 +1477,12 @@ function initReviewers() {
       const isRTOSOnly = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
       const rchip = pct===null ? '<span style="color:var(--muted);font-size:11px">Pending</span>'
         : '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
-      const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome : '';
-      const outclr = outcome==='Positive Recognition'||outcome==='No Action Required'?'var(--green)':outcome==='Provider Feedback'?'var(--accent2)':outcome==='Required Education'?'var(--yellow)':outcome==='CRC Required'?'var(--red)':'var(--muted)';
+      const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome
+                   : rev && rev.ls && rev.ls.findings ? rev.ls.findings.outcome
+                   : rev && rev.rt && rev.rt.findings ? rev.rt.findings.outcome
+                   : rev && rev.os && rev.os.findings ? rev.os.findings.outcome
+                   : (rev && (rev.rt || rev.os)) ? 'Reviewed' : '';
+      const outclr = outcome==='Positive Recognition'||outcome==='No Action Required'?'var(--green)':outcome==='Provider Feedback'?'var(--accent2)':outcome==='Required Education'?'var(--yellow)':outcome==='CRC Required'?'var(--red)':outcome==='Reviewed'?'var(--accent2)':'var(--muted)';
       const outbadge = outcome ? '<span style="font-size:10px;color:'+outclr+'">' + outcome + '</span>' : '<span style="font-size:10px;color:var(--muted)">Pending</span>';
       return '<tr><td style="font-family:var(--mono);color:var(--accent2);cursor:pointer;text-decoration:underline" onclick="openScorecard(this.dataset.id)" data-id="' + c.id + '">' + c.id + '</td>'
         + '<td style="font-family:var(--mono);font-size:11px;color:var(--muted)">' + c.date + '</td>'
@@ -2781,8 +2801,9 @@ function submitScorecard() {
     }
   }
 
-  // Refresh everything
+  // Refresh everything — immediately update My Cases so reviewer sees live status
   renderSCBody();
+  initMyCases();
   initOverview();
   const alertEl = document.getElementById('scAlertBanner');
   if (alertEl) {
@@ -2801,7 +2822,16 @@ function submitScorecard() {
     }
     alertEl.innerHTML = ab;
   }
-  if (currentUser.role !== 'coordinator') initMyCases();
+  if (currentUser.role !== 'coordinator') {
+    initMyCases();
+    // Update badge count immediately
+    const myDone = QUEUE.filter(function(c){ return c.assigned_to === currentUser.reviewer_key && completedReviews[c.id]; }).length;
+    const myTotal = QUEUE.filter(function(c){ return c.assigned_to === currentUser.reviewer_key; }).length;
+    var badge = document.getElementById('myCasesBadge');
+    if (badge) badge.textContent = myTotal;
+  } else {
+    initReviewers();
+  }
   // Auto-close only if all required reviews are done
   if (!anyStillNeeded) {
     setTimeout(function() { closeScorecard(); }, 400);
@@ -3882,7 +3912,7 @@ function startAutoRefresh() {
     } catch(e) {
       // Silent fail — don't disrupt the user
     }
-  }, 30000); // every 30 seconds
+  }, 15000); // every 15 seconds for responsive live updates
 }
 
 function stopAutoRefresh() {
