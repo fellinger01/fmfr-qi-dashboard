@@ -273,6 +273,40 @@ tr:hover td{background:var(--surface2)}
     <div class="stat-card stat-card-click" onclick="openStatDrill('crc-complete')" title="View completed CRC cases"><div class="stat-label">CRC COMPLETED</div><div class="stat-value c-g" id="ov-crc-done-val">0</div><div class="stat-sub" id="ov-crc-done-sub">Coordinator disposition recorded</div></div>
   </div>
 
+  <div class="stat-row2" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+    <div class="stat-card" id="ov-ls-results-card">
+      <div class="stat-label">L&amp;S TRANSPORT RESULTS</div>
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div class="stat-value c-g" id="ov-ls-justified-val">0</div>
+        <div style="font-size:14px;color:var(--muted);font-family:var(--mono)">/ <span id="ov-ls-reviewed-total">0</span></div>
+      </div>
+      <div class="stat-sub" id="ov-ls-results-sub">No L&S reviews completed</div>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <span style="font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:3px;background:rgba(63,185,80,.15);color:var(--green)" id="ov-ls-justified-badge">0 Justified</span>
+        <span style="font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:3px;background:rgba(248,81,73,.15);color:var(--red)" id="ov-ls-notjustified-badge">0 Not Justified</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">AVG CLINICAL SCORE</div>
+      <div class="stat-value c-b" id="ov-avg-score-val">N/A</div>
+      <div class="stat-sub" id="ov-avg-score-sub">No clinical reviews completed</div>
+      <div style="margin-top:8px">
+        <div style="height:4px;background:var(--bg);border-radius:2px;overflow:hidden">
+          <div id="ov-avg-score-bar" style="height:100%;border-radius:2px;background:var(--accent2);width:0%;transition:width 1s"></div>
+        </div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">21-DAY COMPLIANCE</div>
+      <div class="stat-value c-g" id="ov-compliance-val">N/A</div>
+      <div class="stat-sub" id="ov-compliance-sub">Reviews completed within policy deadline</div>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <span style="font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:3px;background:rgba(63,185,80,.15);color:var(--green)" id="ov-compliance-on-badge">0 On time</span>
+        <span style="font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:3px;background:rgba(248,81,73,.15);color:var(--red)" id="ov-compliance-late-badge">0 Overdue</span>
+      </div>
+    </div>
+  </div>
+
   <div class="sec-label">Review Progress</div>
   <div class="chart-card" style="padding:20px 24px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -1179,6 +1213,86 @@ function initOverview() {
   }
   document.getElementById('overviewAlerts').innerHTML = alertHtml;
 
+  // ── New stat cards ────────────────────────────────────────────────────────
+  // L&S Transport Results
+  const lsReviewed = QUEUE.filter(function(c){
+    return c.triggers.includes('L&S Transport') && completedReviews[c.id] && completedReviews[c.id].ls;
+  });
+  const lsJustifiedCount = lsReviewed.filter(function(c){
+    return completedReviews[c.id].ls.findings && !completedReviews[c.id].ls.findings.escalated;
+  }).length;
+  const lsNotJustifiedCount = lsReviewed.length - lsJustifiedCount;
+  const lsJustifiedPct = lsReviewed.length > 0 ? Math.round(lsJustifiedCount / lsReviewed.length * 100) : null;
+
+  setEl('ov-ls-justified-val', lsJustifiedPct !== null ? lsJustifiedPct + '%' : 'N/A');
+  setEl('ov-ls-reviewed-total', lsReviewed.length + ' reviewed');
+  setEl('ov-ls-results-sub', lsReviewed.length > 0
+    ? lsJustifiedCount + ' of ' + lsReviewed.length + ' L&S reviews justified (' + lsJustifiedPct + '%)'
+    : 'No L&S reviews completed');
+  var lsJustEl = document.getElementById('ov-ls-justified-badge');
+  var lsNotEl  = document.getElementById('ov-ls-notjustified-badge');
+  if (lsJustEl) lsJustEl.textContent = lsJustifiedCount + ' Justified';
+  if (lsNotEl)  lsNotEl.textContent  = lsNotJustifiedCount + ' Not Justified';
+  // Color the main value by justified rate
+  var lsValEl = document.getElementById('ov-ls-justified-val');
+  if (lsValEl && lsJustifiedPct !== null) {
+    lsValEl.style.color = lsJustifiedPct >= 90 ? 'var(--green)' : lsJustifiedPct >= 75 ? 'var(--accent2)' : 'var(--red)';
+  }
+
+  // Average Clinical Score
+  const clinScores = Object.values(completedReviews).filter(function(r){ return r.clinical && r.clinical.pct > 0; }).map(function(r){ return r.clinical.pct * 100; });
+  const avgClinScore = clinScores.length > 0 ? Math.round(clinScores.reduce(function(a,b){ return a+b; }, 0) / clinScores.length) : null;
+  setEl('ov-avg-score-val', avgClinScore !== null ? avgClinScore + '%' : 'N/A');
+  setEl('ov-avg-score-sub', avgClinScore !== null
+    ? 'From ' + clinScores.length + ' clinical reviews · ' + (avgClinScore >= 90 ? 'Excellent' : avgClinScore >= 75 ? 'Acceptable' : avgClinScore >= 60 ? 'Below Standard' : 'CRC Range')
+    : 'No clinical reviews completed');
+  var scoreBarEl = document.getElementById('ov-avg-score-bar');
+  if (scoreBarEl) {
+    scoreBarEl.style.width = (avgClinScore || 0) + '%';
+    scoreBarEl.style.background = avgClinScore >= 90 ? 'var(--green)' : avgClinScore >= 75 ? 'var(--accent2)' : avgClinScore >= 60 ? 'var(--yellow)' : 'var(--red)';
+  }
+  var avgScoreValEl = document.getElementById('ov-avg-score-val');
+  if (avgScoreValEl && avgClinScore !== null) {
+    avgScoreValEl.style.color = avgClinScore >= 90 ? 'var(--green)' : avgClinScore >= 75 ? 'var(--accent2)' : avgClinScore >= 60 ? 'var(--yellow)' : 'var(--red)';
+  }
+
+  // 21-Day Compliance
+  const today21 = new Date();
+  var onTime21 = 0, late21 = 0;
+  QUEUE.forEach(function(c) {
+    const r = completedReviews[c.id];
+    if (!r || !c.date) return;
+    var parts = c.date.split('/');
+    var callDate = new Date(parts[2], parts[0]-1, parts[1]);
+    var deadline = new Date(callDate);
+    deadline.setDate(deadline.getDate() + 21);
+    // Determine when it was submitted
+    var submittedStr = r.clinical ? r.clinical.submittedAt : r.ls ? r.ls.submittedAt : r.rt ? r.rt.submittedAt : r.os ? r.os.submittedAt : null;
+    if (submittedStr) {
+      var submittedDate = new Date(submittedStr);
+      if (submittedDate <= deadline) onTime21++;
+      else late21++;
+    } else {
+      // No submission date recorded — check if it's still within deadline
+      if (today21 <= deadline) onTime21++;
+      else late21++;
+    }
+  });
+  const totalReviewed21 = onTime21 + late21;
+  const compliancePct = totalReviewed21 > 0 ? Math.round(onTime21 / totalReviewed21 * 100) : null;
+  setEl('ov-compliance-val', compliancePct !== null ? compliancePct + '%' : 'N/A');
+  setEl('ov-compliance-sub', totalReviewed21 > 0
+    ? onTime21 + ' of ' + totalReviewed21 + ' reviews within 21-day deadline'
+    : 'No completed reviews to measure');
+  var compOnEl   = document.getElementById('ov-compliance-on-badge');
+  var compLateEl = document.getElementById('ov-compliance-late-badge');
+  if (compOnEl)   compOnEl.textContent   = onTime21 + ' On time';
+  if (compLateEl) compLateEl.textContent = late21 + ' Overdue';
+  var compValEl = document.getElementById('ov-compliance-val');
+  if (compValEl && compliancePct !== null) {
+    compValEl.style.color = compliancePct >= 90 ? 'var(--green)' : compliancePct >= 75 ? 'var(--accent2)' : 'var(--red)';
+  }
+
   // Charts
   // Destroy existing charts so they redraw correctly after ESO import
   ['trigger','score','los','lsOv','prov'].forEach(function(k) {
@@ -1298,7 +1412,11 @@ function renderQueue(data) {
     const scoreInfo = rev_q && rev_q.clinical;
     const pct = scoreInfo ? Math.round(scoreInfo.pct * 100) : rev_q && rev_q.ls ? Math.round(rev_q.ls.pct*100) : null;
     const isRTOSOnlyQ = rev_q && !rev_q.clinical && !rev_q.ls && (rev_q.rt || rev_q.os);
+    const lsOnlyQ = rev_q && rev_q.ls && !rev_q.clinical;
+    const lsJustifiedQ = lsOnlyQ && rev_q.ls.findings && !rev_q.ls.findings.escalated;
     const scoreHtml = isRTOSOnlyQ ? '<span class="score-chip score-ac">Reviewed</span>'
+      : lsOnlyQ
+        ? (lsJustifiedQ ? '<span class="score-chip score-ex">Justified</span>' : '<span class="score-chip score-fl">Not Justified</span>')
       : pct !== null
         ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
         : '<span class="score-chip score-na">Pending</span>';
@@ -1378,11 +1496,18 @@ function initReviewers() {
                 : null;
       const isRTOSOnly = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
       const rclr = pct===null?'var(--muted)':pct>=90?'var(--green)':pct>=75?'var(--accent2)':pct>=60?'var(--yellow)':'var(--red)';
+      // L&S-only cases: show Justified/Not Justified instead of percentage
+      const lsOnly = rev && rev.ls && !rev.clinical;
+      const lsJustified = lsOnly && rev.ls.findings && !rev.ls.findings.escalated;
       const rchip = isRTOSOnly
         ? '<span class="score-chip score-ac">Reviewed</span>'
-        : pct===null
-          ? '<span style="color:var(--muted);font-size:11px">Pending</span>'
-          : '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
+        : lsOnly
+          ? (lsJustified
+              ? '<span class="score-chip score-ex">Justified</span>'
+              : '<span class="score-chip score-fl">Not Justified</span>')
+          : pct===null
+            ? '<span style="color:var(--muted);font-size:11px">Pending</span>'
+            : '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
       const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome
                    : rev && rev.ls && rev.ls.findings ? rev.ls.findings.outcome
                    : rev && rev.rt && rev.rt.findings ? rev.rt.findings.outcome
@@ -1661,10 +1786,15 @@ function caseCard(c, completed=false) {
       const isRTOSOnly = rev && !rev.clinical && !rev.ls && (rev.rt || rev.os);
   const outcome = rev && rev.clinical && rev.clinical.findings ? rev.clinical.findings.outcome : null;
   const crcFlag = rev && rev.clinical && rev.clinical.findings && rev.clinical.findings.crc;
-  const scoreChip = pct !== null
-    ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
-      + (crcFlag ? ' <span style="color:var(--red);font-size:10px">&#9873; CRC</span>' : '')
-    : '';
+  // L&S-only cases: show Justified/Not Justified
+  const lsOnlyCard = rev && rev.ls && !rev.clinical;
+  const lsJustifiedCard = lsOnlyCard && rev.ls.findings && !rev.ls.findings.escalated;
+  const scoreChip = lsOnlyCard
+    ? (lsJustifiedCard ? '<span class="score-chip score-ex">Justified</span>' : '<span class="score-chip score-fl">Not Justified</span>')
+    : pct !== null
+      ? '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>'
+        + (crcFlag ? ' <span style="color:var(--red);font-size:10px">&#9873; CRC</span>' : '')
+      : '';
   const outColor = outcome==='Positive Recognition'||outcome==='No Action Required' ? 'var(--green)'
     : outcome==='Provider Feedback' ? 'var(--accent2)'
     : outcome==='Required Education' ? 'var(--yellow)'
@@ -1847,8 +1977,16 @@ function initLS() {
     const lsPct  = lsR   ? Math.round(lsR.pct*100)   : null;
     const clinPct = clinR ? Math.round(clinR.pct*100) : null;
 
-    function chip(pct) {
+    function chip(pct, isLSCol) {
       if (pct === null) return '<span style="color:var(--muted);font-size:11px">Pending</span>';
+      if (isLSCol) {
+        // L&S score: show Justified/Not Justified based on escalation status
+        var lsRev = completedReviews[c.id] && completedReviews[c.id].ls;
+        var justified = lsRev && lsRev.findings && !lsRev.findings.escalated;
+        return justified
+          ? '<span class="score-chip score-ex">Justified</span>'
+          : '<span class="score-chip score-fl">Not Justified</span>';
+      }
       return '<span class="score-chip ' + (pct>=90?'score-ex':pct>=75?'score-ac':pct>=60?'score-ni':'score-fl') + '">' + pct + '%</span>';
     }
 
@@ -1870,8 +2008,8 @@ function initLS() {
       + '<td style="font-size:11px">' + (c.ls_transport||'N/A') + '</td>'
       + '<td style="font-size:11px">' + (c.emd||'N/A') + '</td>'
       + '<td>' + statusPill(c.assigned_to) + '</td>'
-      + '<td>' + chip(clinPct) + '</td>'
-      + '<td>' + chip(lsPct) + '</td>'
+      + '<td>' + chip(clinPct, false) + '</td>'
+      + '<td>' + chip(lsPct, true) + '</td>'
       + '<td style="font-size:11px">'
         + (r
             ? '<span style="color:' + outclr + '">' + outcomeText + '</span>'
