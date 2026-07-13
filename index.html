@@ -2653,7 +2653,7 @@ function renderSCBody() {
                      (savedReview.ls && savedReview.ls.findings && savedReview.ls.findings.escalation_reason) || '';
   const coordData  = savedReview.coordinator_disposition || {};
 
-  if (isCoordinator && reviewDone && (isCRCCase || isEscCase)) {
+  if (isCoordinator && reviewDone) {
     const coordDone = !!(coordData.determination);
     const cdDisabled = coordDone ? 'disabled' : '';
 
