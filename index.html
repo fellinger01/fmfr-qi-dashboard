@@ -605,6 +605,8 @@ tr:hover td{background:var(--surface2)}
     <div id="import-log" style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8;white-space:pre-wrap;padding:4px 0"></div>
   </div>
 </div>
+<!-- REPORT -->
+<div id="tab-report" class="tab-content"><div id="tab-report-inner" style="padding:24px"></div></div>
 <!-- POLICY REF -->
 <div id="tab-policy" class="tab-content">
   <div class="sec-label">Policy v5 — Mandatory Review Triggers (§6.1)</div>
@@ -1072,6 +1074,11 @@ function showTab(id, el) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + id).classList.add('active');
   el.classList.add('active');
+  // Initialize report tab on first click
+  if (id === 'report') {
+    var inner = document.getElementById('tab-report-inner');
+    if (inner && inner.innerHTML.trim() === '') initReport();
+  }
 }
 
 // ── HELPERS ──
