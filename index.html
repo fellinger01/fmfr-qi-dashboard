@@ -2744,6 +2744,10 @@ function renderSCBody() {
                 + '<div style="font-size:11px;color:var(--green);font-family:var(--mono)">&#10003; Review closed by ' + (coordData.saved_by||'coordinator') + ' on ' + (coordData.saved_at||'') + '</div>'
               + '</div>'
           )
+        + '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:8px">'
+          + '<button onclick="generateProviderFeedback()" class="btn" style="flex:1;justify-content:center;background:var(--navy);border-color:var(--gold);color:var(--gold)">&#128196; Provider Feedback PDF</button>'
+          + '<button onclick="generateProviderEmail()" class="btn" style="flex:1;justify-content:center">&#9993; Email Template</button>'
+        + '</div>'
       + '</div>'
     + '</div>';
   }
@@ -4459,6 +4463,267 @@ function exportReportCSV() {
   a.download = 'FMFR_QI_Report_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
 }
+
+// ── PROVIDER FEEDBACK GENERATOR ───────────────────────────────────────────────
+function generateProviderFeedback() {
+  if (!activeCase) return;
+  const c   = activeCase;
+  const rev = completedReviews[c.id] || {};
+  const cd  = rev.coordinator_disposition || {};
+
+  // Gather scorecard data
+  const clinRev  = rev.clinical || null;
+  const lsRev    = rev.ls || null;
+  const rtRev    = rev.rt || null;
+  const osRev    = rev.os || null;
+
+  const clinPct     = clinRev ? Math.round(clinRev.pct * 100) : null;
+  const clinOutcome = clinRev && clinRev.findings ? clinRev.findings.outcome : null;
+  const clinNotes   = clinRev && clinRev.findings ? clinRev.findings.comments : '';
+  const clinPos     = clinRev && clinRev.findings ? clinRev.findings.positive || '' : '';
+  const lsJust      = lsRev && lsRev.findings ? !lsRev.findings.escalated : null;
+  const lsNotes     = lsRev && lsRev.findings ? lsRev.findings.comments : '';
+  const coordNotes  = cd.comments || '';
+  const coordinator = currentUser ? currentUser.name : 'QI/QA Coordinator';
+  const today       = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+
+  // Score color
+  const scoreColor = clinPct >= 90 ? '#3fb950' : clinPct >= 75 ? '#388bfd' : clinPct >= 60 ? '#d29922' : '#f85149';
+  const outcomeColor = clinOutcome === 'Positive Recognition' || clinOutcome === 'No Action Required' ? '#3fb950'
+    : clinOutcome === 'Provider Feedback' || clinOutcome === 'Individual Education' ? '#f0883e'
+    : clinOutcome === 'Required Education' || clinOutcome === 'Agency-Wide Education' ? '#d29922'
+    : clinOutcome === 'CRC Required' ? '#f85149' : '#8b949e';
+
+  // Score range label
+  const scoreLabel = clinPct >= 90 ? 'Excellent' : clinPct >= 75 ? 'Acceptable' : clinPct >= 60 ? 'Below Standard — Improvement Required' : 'Critical — CRC Required';
+
+  const feedbackHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FMFR QI/QA Provider Feedback — ${c.id}</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1a1a2e; background:#fff; padding:40px; max-width:800px; margin:0 auto; }
+  .header { background:#1c2a3a; color:#fff; padding:28px 32px; border-bottom:4px solid #d4a843; margin-bottom:28px; }
+  .header h1 { font-size:20px; font-weight:700; margin-bottom:4px; }
+  .header .sub { font-size:11px; color:#d4a843; text-transform:uppercase; letter-spacing:.08em; margin-bottom:16px; }
+  .header-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:12px; }
+  .header-row { display:flex; gap:8px; }
+  .header-label { color:#d4a843; font-weight:600; min-width:100px; }
+  .section { margin-bottom:24px; }
+  .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#1c2a3a; border-bottom:2px solid #1c2a3a; padding-bottom:6px; margin-bottom:14px; }
+  .score-box { background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:20px; display:flex; align-items:center; gap:24px; }
+  .score-val { font-size:48px; font-weight:700; font-family:monospace; color:${scoreColor}; line-height:1; }
+  .score-detail { flex:1; }
+  .score-label { font-size:15px; font-weight:600; color:${scoreColor}; margin-bottom:4px; }
+  .score-range { font-size:12px; color:#666; }
+  .outcome-chip { display:inline-block; padding:4px 14px; border-radius:4px; font-size:12px; font-weight:700; color:#fff; background:${outcomeColor}; margin-top:8px; }
+  .info-row { display:flex; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:12px; }
+  .info-label { color:#666; min-width:140px; font-weight:600; }
+  .info-val { color:#1a1a2e; }
+  .notes-box { background:#f8f9fa; border-left:4px solid #388bfd; padding:14px 16px; border-radius:0 6px 6px 0; font-size:13px; line-height:1.6; color:#1a1a2e; margin-bottom:12px; }
+  .positive-box { background:#f0fff4; border-left:4px solid #3fb950; padding:14px 16px; border-radius:0 6px 6px 0; font-size:13px; line-height:1.6; color:#1a1a2e; margin-bottom:12px; }
+  .coord-box { background:#fff8e6; border-left:4px solid #d4a843; padding:14px 16px; border-radius:0 6px 6px 0; font-size:13px; line-height:1.6; color:#1a1a2e; }
+  .sig-grid { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:16px; }
+  .sig-line { border-bottom:1px solid #1a1a2e; margin-top:40px; margin-bottom:4px; }
+  .sig-label { font-size:11px; color:#666; }
+  .footer { margin-top:32px; padding-top:16px; border-top:1px solid #dee2e6; font-size:10px; color:#999; text-align:center; }
+  .ls-box { background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:16px; display:flex; align-items:center; gap:16px; }
+  .ls-val { font-size:20px; font-weight:700; color:${lsJust === true ? '#3fb950' : lsJust === false ? '#f85149' : '#8b949e'}; }
+  @media print { body { padding:20px; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="sub">Quality Improvement &amp; Quality Assurance</div>
+    <h1>Provider QI/QA Feedback Report</h1>
+    <div class="header-grid" style="margin-top:16px">
+      <div class="header-row"><span class="header-label">Provider:</span><span>${c.lead}</span></div>
+      <div class="header-row"><span class="header-label">Incident #:</span><span>${c.id}</span></div>
+      <div class="header-row"><span class="header-label">Call Date:</span><span>${c.date}</span></div>
+      <div class="header-row"><span class="header-label">Level of Service:</span><span>${c.los}</span></div>
+      <div class="header-row"><span class="header-label">Chief Complaint:</span><span>${c.emd||'N/A'}</span></div>
+      <div class="header-row"><span class="header-label">Shift:</span><span>${c.shift||'N/A'}</span></div>
+      <div class="header-row"><span class="header-label">Review Date:</span><span>${today}</span></div>
+      <div class="header-row"><span class="header-label">Reviewed by:</span><span>${coordinator}</span></div>
+    </div>
+  </div>
+
+  ${clinRev ? `
+  <div class="section">
+    <div class="section-title">Clinical Documentation Score</div>
+    <div class="score-box">
+      <div class="score-val">${clinPct}%</div>
+      <div class="score-detail">
+        <div class="score-label">${scoreLabel}</div>
+        <div class="score-range">FMFR QI/QA Scoring Scale: ≥90% Excellent · 75–89% Acceptable · 60–74% Below Standard · &lt;60% CRC Required</div>
+        ${clinOutcome ? '<div class="outcome-chip">'+clinOutcome+'</div>' : ''}
+      </div>
+    </div>
+  </div>` : ''}
+
+  ${lsRev ? `
+  <div class="section">
+    <div class="section-title">L&amp;S Transport Review</div>
+    <div class="ls-box">
+      <div class="ls-val">${lsJust === true ? '✓ Justified' : lsJust === false ? '✗ Not Justified' : 'Reviewed'}</div>
+      <div style="font-size:12px;color:#666">Per NHTSA Kupas 2017 criteria and FMFR L&S Transport Policy · 28 Pa.C.S. §1027.3(i)</div>
+    </div>
+    ${lsNotes ? '<div class="notes-box" style="margin-top:12px">'+lsNotes+'</div>' : ''}
+  </div>` : ''}
+
+  ${clinNotes || clinPos || coordNotes ? `
+  <div class="section">
+    <div class="section-title">Reviewer Feedback</div>
+    ${clinNotes ? '<div style="font-size:11px;color:#666;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Clinical Notes</div><div class="notes-box">'+clinNotes+'</div>' : ''}
+    ${clinPos ? '<div style="font-size:11px;color:#3fb950;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">⭐ Positive Findings</div><div class="positive-box">'+clinPos+'</div>' : ''}
+    ${coordNotes ? '<div style="font-size:11px;color:#d4a843;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Coordinator Notes</div><div class="coord-box">'+coordNotes+'</div>' : ''}
+  </div>` : ''}
+
+  <div class="section">
+    <div class="section-title">Acknowledgment</div>
+    <p style="font-size:12px;color:#444;line-height:1.6;margin-bottom:16px">
+      This QI/QA feedback is provided in accordance with FMFR Policy v5 §6 and 28 Pa. Code §1021.63. 
+      Please review this feedback and sign below to acknowledge receipt. If you have questions or wish 
+      to discuss this review, contact the QI/QA Coordinator.
+    </p>
+    <div class="sig-grid">
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Provider Signature &amp; Date</div>
+      </div>
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">${coordinator} — QI/QA Coordinator</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Fetters Mill Fire Rescue · Montgomery County, PA · QI/QA Program · Generated ${today} · CONFIDENTIAL — For Internal Use Only
+  </div>
+</body>
+</html>`;
+
+  // Open in new window for printing/saving as PDF
+  const win = window.open('', '_blank', 'width=900,height=700');
+  win.document.write(feedbackHTML);
+  win.document.close();
+  setTimeout(function() { win.print(); }, 500);
+}
+
+// ── EMAIL TEMPLATE GENERATOR ──────────────────────────────────────────────────
+function generateProviderEmail() {
+  if (!activeCase) return;
+  var c   = activeCase;
+  var rev = completedReviews[c.id] || {};
+  var cd  = rev.coordinator_disposition || {};
+  var clinRev     = rev.clinical || null;
+  var clinPct     = clinRev ? Math.round(clinRev.pct * 100) : null;
+  var clinOutcome = clinRev && clinRev.findings ? clinRev.findings.outcome : null;
+  var clinNotes   = clinRev && clinRev.findings ? clinRev.findings.comments : '';
+  var clinPos     = clinRev && clinRev.findings ? (clinRev.findings.positive || '') : '';
+  var lsRev       = rev.ls || null;
+  var lsJust      = lsRev && lsRev.findings ? !lsRev.findings.escalated : null;
+  var coordNotes  = cd.comments || '';
+  var coordinator = currentUser ? currentUser.name : 'QI/QA Coordinator';
+  var today       = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  var scoreLabel  = clinPct >= 90 ? 'Excellent' : clinPct >= 75 ? 'Acceptable' : clinPct >= 60 ? 'Below Standard' : 'CRC Required';
+
+  var body = c.lead + ',\n\nYour QI/QA review has been completed for the following incident:\n\n'
+    + 'Incident #: ' + c.id + '\n'
+    + 'Call Date: ' + c.date + '\n'
+    + 'Chief Complaint: ' + (c.emd || 'N/A') + '\n'
+    + 'Level of Service: ' + c.los + '\n'
+    + 'Shift: ' + (c.shift || 'N/A');
+
+  if (clinPct !== null) {
+    body += '\n\nCLINICAL DOCUMENTATION SCORE\n' + clinPct + '% -- ' + scoreLabel;
+    if (clinOutcome) body += '\nOutcome: ' + clinOutcome;
+  }
+  if (lsJust !== null) body += '\n\nL&S TRANSPORT REVIEW\n' + (lsJust ? 'Justified' : 'Not Justified -- per NHTSA Kupas 2017 criteria');
+  if (clinNotes) body += '\n\nREVIEWER NOTES\n' + clinNotes;
+  if (clinPos)   body += '\n\nPOSITIVE FINDINGS\n' + clinPos;
+  if (coordNotes) body += '\n\nCOORDINATOR NOTES\n' + coordNotes;
+  body += '\n\nPlease review and acknowledge receipt. Contact me with any questions.\n\n' + coordinator + '\nQI/QA Coordinator -- Fetters Mill Fire Rescue';
+
+  // Remove old modal
+  var old = document.getElementById('fb-email-modal');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'fb-email-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;width:600px;max-height:80vh;overflow-y:auto';
+
+  var hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px';
+  hdr.innerHTML = '<div style="font-weight:700;color:var(--gold)">Email Template -- ' + c.id + '</div>';
+  var closeBtn = document.createElement('button');
+  closeBtn.textContent = 'x';
+  closeBtn.style.cssText = 'background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer';
+  closeBtn.onclick = function() { document.getElementById('fb-email-modal').remove(); };
+  hdr.appendChild(closeBtn);
+
+  var toLabel = document.createElement('div');
+  toLabel.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:4px';
+  toLabel.textContent = 'TO:';
+
+  var toField = document.createElement('div');
+  toField.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;font-size:12px;margin-bottom:12px;font-family:var(--mono)';
+  toField.textContent = c.lead + '@fmfr.org';
+
+  var subLabel = document.createElement('div');
+  subLabel.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:4px';
+  subLabel.textContent = 'SUBJECT:';
+
+  var subField = document.createElement('div');
+  subField.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;font-size:12px;margin-bottom:12px;font-family:var(--mono)';
+  subField.textContent = 'FMFR QI/QA Review -- Incident ' + c.id + ' -- ' + c.date;
+
+  var bodyLabel = document.createElement('div');
+  bodyLabel.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:4px';
+  bodyLabel.textContent = 'BODY:';
+
+  var ta = document.createElement('textarea');
+  ta.id = 'fb-email-body';
+  ta.style.cssText = 'width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px;color:var(--text);font-size:12px;font-family:var(--sans);line-height:1.6;resize:vertical;min-height:280px';
+  ta.value = body;
+
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:12px';
+
+  var copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Copy Body';
+  copyBtn.style.cssText = 'flex:1;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px';
+  copyBtn.onclick = function() {
+    navigator.clipboard.writeText(document.getElementById('fb-email-body').value);
+    copyBtn.textContent = 'Copied!';
+    setTimeout(function(){ copyBtn.textContent = 'Copy Body'; }, 2000);
+  };
+
+  var closeBtn2 = document.createElement('button');
+  closeBtn2.textContent = 'Close';
+  closeBtn2.style.cssText = 'padding:8px 16px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:12px';
+  closeBtn2.onclick = function() { document.getElementById('fb-email-modal').remove(); };
+
+  btnRow.appendChild(copyBtn);
+  btnRow.appendChild(closeBtn2);
+  inner.appendChild(hdr);
+  inner.appendChild(toLabel);
+  inner.appendChild(toField);
+  inner.appendChild(subLabel);
+  inner.appendChild(subField);
+  inner.appendChild(bodyLabel);
+  inner.appendChild(ta);
+  inner.appendChild(btnRow);
+  modal.appendChild(inner);
+  document.body.appendChild(modal);
+}
+
 </script>
 
 <!-- ══════════════════════════════════════════
