@@ -2645,7 +2645,7 @@ function renderSCBody() {
   // ── Coordinator Final Disposition (coordinators only, after review submitted) ──
   const isCoordinator = currentUser && currentUser.role === 'coordinator';
   const savedReview = completedReviews[activeCase ? activeCase.id : ''] || {};
-  const reviewDone = !!(savedReview.clinical);
+  const reviewDone = !!(savedReview.clinical || savedReview.ls || savedReview.rt || savedReview.os);
   const isCRCCase = savedReview.clinical && savedReview.clinical.findings && savedReview.clinical.findings.crc;
   const isEscCase = (savedReview.clinical && savedReview.clinical.findings && savedReview.clinical.findings.escalation_reason) ||
                     (savedReview.ls && savedReview.ls.findings && savedReview.ls.findings.escalated);
