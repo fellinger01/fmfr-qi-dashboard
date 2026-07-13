@@ -717,7 +717,7 @@ function buildRow(id) {
   const rev = completedReviews[id] || {};
   return {
     id:                      id,
-    clinical:                rev.clinical                || null,
+    clinical:                rev.clinical                || null,  // includes findings.positive
     ls:                      rev.ls                      || null,
     rt:                      rev.rt                      || null,
     os:                      rev.os                      || null,
@@ -1026,6 +1026,8 @@ async function setupUI() {
   // Overview tab — show for coordinators only, hide for reviewers
   const ovNav = document.getElementById('tab-nav-overview');
   if (ovNav) ovNav.style.display = isCoord ? '' : 'none';
+  const repNav = document.getElementById('tab-nav-report');
+  if (repNav) repNav.style.display = isCoord ? '' : 'none';
 
   // Load PINs from Supabase (source of truth across all devices)
   await loadPinsFromSupabase();
@@ -1049,6 +1051,7 @@ async function setupUI() {
     initReviewers();
     initProviders();
     initEscalations();
+    initReport();
   } else {
     initMyCases();
     // Reviewers land on My Cases, not Overview
@@ -2118,7 +2121,7 @@ const OS_SC = [
 let activeCase = null;
 let activeSCType = 'clinical'; // 'clinical', 'ls', or 'rt'
 let scScores = {};   // { itemId: { score: N, na: bool, note: '' } }
-let scFindings = { deficiency: '', outcome: '', corrective: '', crc: false, comments: '' };
+let scFindings = { deficiency: '', outcome: '', corrective: '', crc: false, comments: '', positive: '' };
 // ── SANDBOX MODE: Pre-loaded test reviews ──
 const SANDBOX_DATA = {};
 let completedReviews = Object.assign({}, SANDBOX_DATA);
@@ -2481,6 +2484,14 @@ function renderSCBody() {
         + 'style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:5px;font-size:12px;font-family:var(--sans);resize:vertical">'
         + (scFindings.comments||'')
       + '</textarea>'
+    + '<div style="margin-top:12px">'
+      + '<div style="font-size:11px;color:var(--green);font-family:var(--mono);margin-bottom:5px">⭐ POSITIVE FINDINGS <span style="color:var(--muted);font-weight:400">(Optional — document exceptional care or commendable performance)</span></div>'
+      + '<textarea oninput="scFindings.positive=this.value" ' + (disabled?'disabled':'') + ' rows="3" '
+        + 'placeholder="e.g. Excellent systematic assessment, outstanding patient communication, strong clinical reasoning..." '
+        + 'style="width:100%;background:var(--surface);border:1px solid var(--green);color:var(--text);padding:8px 12px;border-radius:5px;font-size:12px;font-family:var(--sans);resize:vertical">'
+        + (scFindings.positive||'')
+      + '</textarea>'
+    + '</div>'
     + '</div>';
   } else if (isRT) {
     // ── RT Findings: justification notes + submit only ───────────────────────
@@ -4117,6 +4128,329 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
+
+// ── REPORT GENERATOR ──────────────────────────────────────────────────────────
+function initReport() {
+  const el = document.getElementById('tab-report-inner');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="max-width:900px;margin:0 auto">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Report Type</span>
+        <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+          <button onclick="setReportType('combined',this)" style="padding:6px 14px;border:none;background:var(--accent);color:#fff;font-size:12px;cursor:pointer" id="rtype-combined">Combined</button>
+          <button onclick="setReportType('clinical',this)" style="padding:6px 14px;border:none;background:transparent;color:var(--muted);font-size:12px;cursor:pointer" id="rtype-clinical">Clinical</button>
+          <button onclick="setReportType('ls',this)" style="padding:6px 14px;border:none;background:transparent;color:var(--muted);font-size:12px;cursor:pointer" id="rtype-ls">L&amp;S</button>
+        </div>
+        <span style="font-size:11px;color:var(--muted)">Period</span>
+        <input type="date" id="rep-from" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px">
+        <span style="color:var(--muted)">to</span>
+        <input type="date" id="rep-to" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px">
+        <button onclick="buildReport()" style="padding:7px 18px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">⚡ Generate</button>
+        <button onclick="window.print()" style="padding:7px 14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer">🖨 Print / PDF</button>
+        <button onclick="exportReportCSV()" style="padding:7px 14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer">⬇ CSV</button>
+      </div>
+      <div id="report-output" style="color:var(--muted);text-align:center;padding:40px">Click ⚡ Generate to build the report</div>
+    </div>`;
+
+  // Set default dates from current period
+  const fromEl = document.getElementById('rep-from');
+  const toEl   = document.getElementById('rep-to');
+  if (STATS.date_range && STATS.date_range.includes('–')) {
+    const parts = STATS.date_range.split('–').map(s=>s.trim());
+    if (fromEl && parts[0]) fromEl.value = new Date(parts[0]).toISOString().slice(0,10);
+    if (toEl   && parts[1]) toEl.value   = new Date(parts[1]).toISOString().slice(0,10);
+  } else {
+    const now = new Date();
+    if (fromEl) fromEl.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    if (toEl)   toEl.value   = now.toISOString().slice(0,10);
+  }
+}
+
+var _reportType = 'combined';
+function setReportType(t, btn) {
+  _reportType = t;
+  ['combined','clinical','ls'].forEach(function(id) {
+    var b = document.getElementById('rtype-'+id);
+    if (b) { b.style.background = id===t?'var(--accent)':'transparent'; b.style.color = id===t?'#fff':'var(--muted)'; }
+  });
+}
+
+function buildReport() {
+  const fromVal = document.getElementById('rep-from').value;
+  const toVal   = document.getElementById('rep-to').value;
+  if (!fromVal || !toVal) { alert('Please select a date range.'); return; }
+
+  const from = new Date(fromVal);
+  const to   = new Date(toVal); to.setHours(23,59,59);
+
+  // Filter cases
+  const cases = QUEUE.filter(function(c) {
+    const p = c.date.split('/');
+    const d = new Date(p[2], p[0]-1, p[1]);
+    if (d < from || d > to) return false;
+    if (_reportType === 'clinical') return c.triggers.some(function(t){ return !['L&S Transport','Response Time >15 min','On-Scene Time >30 min'].includes(t); });
+    if (_reportType === 'ls') return c.triggers.includes('L&S Transport');
+    return true;
+  });
+
+  // Compute stats
+  var reviewed=0, crc=0, positive=0, feedback=0, education=0, lsJust=0, lsNot=0, overdue=0;
+  var scores=[];
+  const today = new Date();
+
+  cases.forEach(function(c) {
+    const r = completedReviews[c.id];
+    const p = c.date.split('/');
+    const callDate = new Date(p[2], p[0]-1, p[1]);
+    const deadline = new Date(callDate); deadline.setDate(deadline.getDate()+21);
+
+    if (r) {
+      reviewed++;
+      if (r.clinical) {
+        const pct = Math.round(r.clinical.pct*100);
+        scores.push(pct);
+        if (r.clinical.findings) {
+          if (r.clinical.findings.crc) crc++;
+          if (r.clinical.findings.outcome==='Positive Recognition') positive++;
+          if (r.clinical.findings.outcome==='Provider Feedback') feedback++;
+          if (r.clinical.findings.outcome==='Individual Education'||r.clinical.findings.outcome==='Required Education') education++;
+        }
+      }
+      if (r.ls) {
+        if (r.ls.findings && !r.ls.findings.escalated) lsJust++;
+        else lsNot++;
+      }
+      const sub = r.clinical?r.clinical.submittedAt:r.ls?r.ls.submittedAt:null;
+      if (sub) {
+        const sp=sub.split('/'); const subDate=new Date(sp[2],sp[0]-1,sp[1]);
+        if (subDate>deadline) overdue++;
+      } else if (today>deadline) overdue++;
+    } else {
+      if (today>deadline) overdue++;
+    }
+  });
+
+  const avg = scores.length ? Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length) : null;
+  const lsTotal = lsJust+lsNot;
+  const lsPct = lsTotal ? Math.round(lsJust/lsTotal*100) : null;
+  const compPct = reviewed ? Math.round((reviewed-overdue)/reviewed*100) : null;
+  const scoreColor = avg ? (avg>=90?'var(--green)':avg>=75?'var(--accent)':avg>=60?'var(--yellow)':'var(--red)') : 'var(--muted)';
+  const lsColor = lsPct ? (lsPct>=90?'var(--green)':lsPct>=75?'var(--accent)':'var(--red)') : 'var(--muted)';
+  const compColor = compPct ? (compPct>=90?'var(--green)':compPct>=75?'var(--accent)':'var(--red)') : 'var(--muted)';
+
+  // Provider breakdown
+  const provMap = {};
+  cases.forEach(function(c) {
+    if (!provMap[c.lead]) provMap[c.lead]={calls:0,reviewed:0,scores:[],crc:0,positive:0,feedback:0,lsJust:0,lsNot:0};
+    const pm = provMap[c.lead]; pm.calls++;
+    const r = completedReviews[c.id];
+    if (r) {
+      pm.reviewed++;
+      if (r.clinical) { pm.scores.push(Math.round(r.clinical.pct*100)); if(r.clinical.findings){if(r.clinical.findings.crc)pm.crc++;if(r.clinical.findings.outcome==='Positive Recognition')pm.positive++;if(r.clinical.findings.outcome==='Provider Feedback')pm.feedback++;} }
+      if (r.ls) { if(r.ls.findings&&!r.ls.findings.escalated)pm.lsJust++;else pm.lsNot++; }
+    }
+  });
+
+  // Case rows
+  const caseRows = cases.map(function(c) {
+    const r = completedReviews[c.id];
+    const pct = r&&r.clinical ? Math.round(r.clinical.pct*100) : null;
+    const lsR = r&&r.ls;
+    const outcome = r ? (r.clinical&&r.clinical.findings?r.clinical.findings.outcome:lsR?(lsR.findings&&!lsR.findings.escalated?'Justified':'Not Justified'):'Reviewed') : 'Pending';
+    const reviewerNote = r ? (r.clinical&&r.clinical.findings?r.clinical.findings.comments:lsR&&lsR.findings?lsR.findings.comments:'') : '';
+    const positiveNote = r&&r.clinical&&r.clinical.findings ? (r.clinical.findings.positive||'') : '';
+    const coordNote = r&&r.coordinator_disposition ? r.coordinator_disposition : '';
+    const chipCls = outcome==='No Action Required'||outcome==='Positive Recognition'||outcome==='Justified'?'var(--green)':outcome==='CRC Required'||outcome==='Not Justified'?'var(--red)':outcome==='Pending'?'var(--muted)':'var(--accent2)';
+    const scoreDisp = lsR && !r.clinical ? (lsR.findings&&!lsR.findings.escalated?'<span style="color:var(--green);font-weight:600">Justified</span>':'<span style="color:var(--red);font-weight:600">Not Justified</span>') : pct!==null ? '<span style="color:'+(pct>=90?'var(--green)':pct>=75?'var(--accent)':pct>=60?'var(--yellow)':'var(--red)')+';font-weight:600">'+pct+'%</span>' : '<span style="color:var(--muted)">Pending</span>';
+    return '<tr>'
+      +'<td style="font-family:var(--mono);color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openScorecard(this.dataset.id)" data-id="'+c.id+'">'+c.id+'</td>'
+      +'<td>'+c.date+'</td>'
+      +'<td><strong>'+c.lead+'</strong></td>'
+      +'<td style="font-size:11px">'+c.triggers.join('<br>')+'</td>'
+      +'<td>'+scoreDisp+'</td>'
+      +'<td><span style="font-size:11px;color:'+chipCls+'">'+outcome+'</span></td>'
+      +'<td style="font-size:11px;color:var(--muted)">'+(reviewerNote||'')+(positiveNote?'<br><span style="color:var(--green)">⭐ '+positiveNote+'</span>':'')+'</td>'
+      +'<td style="font-size:11px;color:var(--accent2)">'+(coordNote||'<span style="color:var(--muted);font-style:italic">Click incident # to add</span>')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  // Provider cards
+  const provCards = Object.entries(provMap).sort(function(a,b){return b[1].calls-a[1].calls;}).map(function(entry) {
+    const name=entry[0], p=entry[1];
+    const pavg = p.scores.length ? Math.round(p.scores.reduce(function(a,b){return a+b;},0)/p.scores.length) : null;
+    const pc = pavg ? (pavg>=90?'var(--green)':pavg>=75?'var(--accent)':pavg>=60?'var(--yellow)':'var(--red)') : 'var(--muted)';
+    return '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">'
+      +'<div style="font-weight:700;margin-bottom:8px">'+name+'</div>'
+      +'<div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)"><span>Calls</span><strong>'+p.calls+'</strong></div>'
+      +'<div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)"><span>Reviewed</span><strong>'+p.reviewed+'</strong></div>'
+      +(pavg!==null?'<div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)"><span>Avg Score</span><strong style="color:'+pc+'">'+pavg+'%</strong></div>':'')
+      +(p.crc?'<div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--red)">CRC Required</span><strong style="color:var(--red)">'+p.crc+'</strong></div>':'')
+      +(p.positive?'<div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--green)">Positive Recognition</span><strong style="color:var(--green)">'+p.positive+'</strong></div>':'')
+      +(p.lsNot?'<div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--red)">L&S Not Justified</span><strong style="color:var(--red)">'+p.lsNot+'</strong></div>':'')
+      +'</div>';
+  }).join('');
+
+  // AI analysis placeholder
+  const aiBox = '<div style="background:var(--bg);border:1px solid var(--accent);border-radius:8px;padding:20px;position:relative">'
+    +'<div style="position:absolute;top:-1px;left:16px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;padding:2px 10px;border-radius:0 0 6px 6px;letter-spacing:.05em">CLAUDE AI</div>'
+    +'<div id="ai-trend-output" style="margin-top:8px;font-size:13px;line-height:1.7;color:var(--muted);font-style:italic">Generating trend analysis...</div>'
+    +'</div>';
+
+  document.getElementById('report-output').innerHTML =
+    // Header
+    '<div style="background:var(--navy);border-left:4px solid var(--gold);padding:24px 28px;border-radius:8px;margin-bottom:20px">'
+    +'<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Quality Improvement &amp; Quality Assurance</div>'
+    +'<div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:12px">FMFR QI/QA Committee Report</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px">'
+    +'<div><span style="color:var(--gold);font-weight:600">Period: </span><span style="color:#fff">'+fromVal+' — '+toVal+'</span></div>'
+    +'<div><span style="color:var(--gold);font-weight:600">Type: </span><span style="color:#fff">'+((_reportType==='combined'?'Combined Clinical & L&S':_reportType==='clinical'?'Clinical':'L&S Transport'))+'</span></div>'
+    +'<div><span style="color:var(--gold);font-weight:600">Prepared by: </span><span style="color:#fff">Fred Ellinger, CEMSO, NRP &amp; Jeff Steere</span></div>'
+    +'<div><span style="color:var(--gold);font-weight:600">Submitted to: </span><span style="color:#fff">Dr. Ryan Overberger · FMFR QI/QA Committee</span></div>'
+    +'<div><span style="color:var(--gold);font-weight:600">Generated: </span><span style="color:#fff">'+new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})+'</span></div>'
+    +'</div></div>'
+
+    // Executive Summary
+    +'<div style="margin-bottom:20px">'
+    +'<div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:6px">Executive Summary</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:24px;font-weight:700;font-family:var(--mono);color:var(--accent)">'+cases.length+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">Cases Selected</div><div style="font-size:11px;color:var(--muted);margin-top:2px">'+reviewed+' reviewed · '+(cases.length-reviewed)+' pending</div></div>'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:24px;font-weight:700;font-family:var(--mono);color:'+scoreColor+'">'+(avg!==null?avg+'%':'N/A')+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">Avg Clinical Score</div><div style="font-size:11px;color:var(--muted);margin-top:2px">'+scores.length+' clinical reviews</div></div>'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:24px;font-weight:700;font-family:var(--mono);color:'+lsColor+'">'+(lsPct!==null?lsPct+'%':'N/A')+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">L&amp;S Justified</div><div style="font-size:11px;color:var(--muted);margin-top:2px">'+lsJust+' justified · '+lsNot+' not</div></div>'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:24px;font-weight:700;font-family:var(--mono);color:'+compColor+'">'+(compPct!==null?compPct+'%':'N/A')+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">21-Day Compliance</div><div style="font-size:11px;color:var(--muted);margin-top:2px">'+overdue+' overdue</div></div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--green)">'+positive+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">Positive Recognition</div></div>'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--accent2)">'+feedback+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">Provider Feedback</div></div>'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--yellow)">'+education+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">Required Education</div></div>'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--red)">'+crc+'</div><div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase">CRC Required</div></div>'
+    +'</div></div>'
+
+    // AI Trend Analysis
+    +'<div style="margin-bottom:20px">'
+    +'<div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:6px">AI-Generated Trend Analysis</div>'
+    +aiBox+'</div>'
+
+    // Coordinator Notes
+    +'<div style="margin-bottom:20px">'
+    +'<div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:6px">Coordinator Notes &amp; Committee Comments</div>'
+    +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:16px">'
+    +'<textarea id="report-coord-notes" placeholder="Enter coordinator notes, action items, committee discussion points, or follow-up requirements..." rows="4" style="width:100%;background:transparent;border:none;color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.6;resize:vertical;outline:none"></textarea>'
+    +'<div style="display:flex;gap:20px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">'
+    +'<div style="flex:1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase">QI/QA Coordinator</div><div style="border-bottom:1px solid var(--border);margin-top:20px;margin-bottom:4px"></div><div style="font-size:11px;color:var(--muted)">Fred Ellinger, CEMSO, NRP</div></div>'
+    +'<div style="flex:1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Asst. Coordinator</div><div style="border-bottom:1px solid var(--border);margin-top:20px;margin-bottom:4px"></div><div style="font-size:11px;color:var(--muted)">Jeff Steere</div></div>'
+    +'<div style="flex:1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Medical Director</div><div style="border-bottom:1px solid var(--border);margin-top:20px;margin-bottom:4px"></div><div style="font-size:11px;color:var(--muted)">Dr. Ryan Overberger</div></div>'
+    +'<div style="flex:1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Date</div><div style="border-bottom:1px solid var(--border);margin-top:20px"></div></div>'
+    +'</div></div></div>'
+
+    // Provider Breakdown
+    +'<div style="margin-bottom:20px">'
+    +'<div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:6px">Provider Performance Breakdown</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+provCards+'</div>'
+    +'</div>'
+
+    // Case Detail
+    +'<div>'
+    +'<div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:6px">Case Detail ('+cases.length+' cases) — Click incident # to open scorecard &amp; add coordinator notes</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
+    +'<span style="font-size:11px;color:var(--muted);align-self:center">Filter:</span>'
+    +'<button data-filter="all" onclick="filterReportTable(this)" style="padding:3px 12px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;cursor:pointer">All Cases</button>'
+    +'<button data-filter="issues" onclick="filterReportTable(this)" style="padding:3px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer">Issues Only</button>'
+    +'<button data-filter="positive" onclick="filterReportTable(this)" style="padding:3px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer">Positive Only</button>'
+    +'<button data-filter="crc" onclick="filterReportTable(this)" style="padding:3px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer">CRC / Escalated</button>'
+    +'</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px" id="report-case-table">'
+    +'<thead><tr>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Incident #</th>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Date</th>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Provider</th>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Triggers</th>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Score</th>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Outcome</th>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Reviewer Notes</th>'
+    +'<th style="text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;padding:8px;border-bottom:1px solid var(--border)">Coordinator Notes</th>'
+    +'</tr></thead>'
+    +'<tbody>'+caseRows+'</tbody></table></div>'
+    +'</div>';
+
+  // Run AI trend analysis
+  runReportAI(cases, {total:cases.length,reviewed,avg,lsJust,lsNot,crc,positive,feedback,education,overdue});
+}
+
+function filterReportTable(btn) { var mode = btn.dataset.filter;
+  document.querySelectorAll('#report-output button').forEach(function(b) {
+    if (b.textContent.match(/All Cases|Issues Only|Positive Only|CRC/)) {
+      b.style.background='transparent'; b.style.color='var(--muted)'; b.style.borderColor='var(--border)';
+    }
+  });
+  btn.style.background='var(--accent)'; btn.style.color='#fff'; btn.style.borderColor='var(--accent)';
+  document.querySelectorAll('#report-case-table tbody tr').forEach(function(row) {
+    const outcome = row.cells[5]?row.cells[5].textContent.trim():'';
+    const score = row.cells[4]?parseInt(row.cells[4].textContent):null;
+    let show = true;
+    if (mode==='issues') show = ['Provider Feedback','Required Education','CRC Required','Not Justified','Individual Education'].some(function(o){return outcome.includes(o);}) || (score!==null&&score<75);
+    if (mode==='positive') show = outcome.includes('Positive Recognition');
+    if (mode==='crc') show = outcome.includes('CRC')||outcome.includes('Not Justified');
+    row.style.display = show?'':'none';
+  });
+}
+
+async function runReportAI(cases, stats) {
+  const el = document.getElementById('ai-trend-output');
+  if (!el) return;
+
+  const comments = cases.map(function(c) {
+    const r = completedReviews[c.id];
+    if (!r) return null;
+    const notes = [];
+    if (r.clinical&&r.clinical.findings&&r.clinical.findings.comments) notes.push(r.clinical.findings.comments);
+    if (r.clinical&&r.clinical.findings&&r.clinical.findings.positive) notes.push('POSITIVE: '+r.clinical.findings.positive);
+    if (r.ls&&r.ls.findings&&r.ls.findings.comments) notes.push(r.ls.findings.comments);
+    if (r.coordinator_disposition) notes.push('COORDINATOR: '+r.coordinator_disposition);
+    if (!notes.length) return null;
+    return {id:c.id, provider:c.lead, score:r.clinical?Math.round(r.clinical.pct*100):null, outcome:r.clinical?r.clinical.findings.outcome:r.ls?(r.ls.findings&&!r.ls.findings.escalated?'Justified':'Not Justified'):null, notes:notes.join(' | ')};
+  }).filter(Boolean);
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1000,
+        messages:[{
+          role:'user',
+          content:'You are an EMS Quality Improvement coordinator for Fetters Mill Fire Rescue (FMFR), an ALS fire and EMS agency in Montgomery County, Pennsylvania. Write a professional 3-4 paragraph narrative trend analysis for the QI/QA committee report. Cover: (1) overall performance summary with specific numbers, (2) clinical documentation trends from reviewer notes, (3) L&S transport utilization if applicable, (4) specific recommendations. Be concise, clinical, and professional. This will be signed by Fred Ellinger, CEMSO, NRP, Deputy Chief EMS.\n\nData:\n'+JSON.stringify({stats,reviewerComments:comments},null,2)
+        }]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content&&data.content[0]?data.content[0].text:'Analysis unavailable.';
+    el.style.fontStyle='normal'; el.style.color='var(--text)';
+    el.textContent = text;
+  } catch(e) {
+    el.textContent = 'AI analysis requires internet connection. All other report sections are fully functional offline.';
+  }
+}
+
+function exportReportCSV() {
+  const rows = [['Incident #','Date','Provider','LOS','Triggers','Score','Outcome','Reviewer Notes','Positive Findings','Coordinator Notes']];
+  QUEUE.forEach(function(c) {
+    const r = completedReviews[c.id];
+    const pct = r&&r.clinical?Math.round(r.clinical.pct*100)+'%':'';
+    const outcome = r?(r.clinical&&r.clinical.findings?r.clinical.findings.outcome:r.ls?(r.ls.findings&&!r.ls.findings.escalated?'Justified':'Not Justified'):''):'Pending';
+    const notes = r&&r.clinical&&r.clinical.findings?r.clinical.findings.comments:'';
+    const positive = r&&r.clinical&&r.clinical.findings?r.clinical.findings.positive||'':'';
+    const coord = r&&r.coordinator_disposition?r.coordinator_disposition:'';
+    rows.push([c.id,c.date,c.lead,c.los,c.triggers.join('; '),pct,outcome,'"'+(notes||'').replace(/"/g,"''")+'"','"'+(positive||'').replace(/"/g,"''")+'"','"'+(coord||'').replace(/"/g,"''")+'"']);
+  });
+  const csv = rows.map(function(r){return r.join(',');}).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'FMFR_QI_Report_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
 </script>
 
 <!-- ══════════════════════════════════════════
