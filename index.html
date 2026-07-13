@@ -308,6 +308,8 @@ tr:hover td{background:var(--surface2)}
     </div>
   </div>
 
+  <div class="sec-label" style="margin-top:20px">Period-over-Period Trends</div>
+  <div id="trending-section" style="margin-bottom:20px"><div style="color:var(--muted);font-size:12px;font-style:italic;padding:8px">Loading...</div></div>
   <div class="sec-label">Review Progress</div>
   <div class="chart-card" style="padding:20px 24px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -1303,6 +1305,9 @@ function initOverview() {
   if (compValEl && compliancePct !== null) {
     compValEl.style.color = compliancePct >= 90 ? 'var(--green)' : compliancePct >= 75 ? 'var(--accent2)' : 'var(--red)';
   }
+
+  // Load trending data
+  initTrending();
 
   // Charts
   // Destroy existing charts so they redraw correctly after ESO import
@@ -3740,6 +3745,7 @@ function confirmImport() {
 
   // Save queue to Supabase synchronously so all users get it on next login
   saveQueueToSupabase(queue, stats);
+  savePeriodSnapshot();
   alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
 }
 
@@ -4724,6 +4730,207 @@ function generateProviderEmail() {
   document.body.appendChild(modal);
 }
 
+
+// ── PERIOD-OVER-PERIOD TRENDING ───────────────────────────────────────────────
+
+async function savePeriodSnapshot() {
+  if (!isSupabaseConfigured()) return;
+  // Compute snapshot from current completedReviews and QUEUE
+  var clinScores = [], lsTotal = 0, lsJust = 0, crcCount = 0, reviewedCount = 0;
+  var today = new Date();
+  var onTime = 0, totalDue = 0;
+
+  QUEUE.forEach(function(c) {
+    var r = completedReviews[c.id];
+    if (!r) return;
+    reviewedCount++;
+    if (r.clinical) {
+      clinScores.push(Math.round(r.clinical.pct * 100));
+      if (r.clinical.findings && r.clinical.findings.crc) crcCount++;
+    }
+    if (r.ls) {
+      lsTotal++;
+      if (r.ls.findings && !r.ls.findings.escalated) lsJust++;
+    }
+    // 21-day compliance
+    var p = c.date.split('/');
+    var callDate = new Date(p[2], p[0]-1, p[1]);
+    var deadline = new Date(callDate); deadline.setDate(deadline.getDate() + 21);
+    var sub = r.clinical ? r.clinical.submittedAt : r.ls ? r.ls.submittedAt : null;
+    if (sub) {
+      totalDue++;
+      var sp = sub.split('/');
+      var subDate = new Date(sp[2], sp[0]-1, sp[1]);
+      if (subDate <= deadline) onTime++;
+    }
+  });
+
+  var snapshot = {
+    period:       STATS.date_range || 'Unknown',
+    saved_at:     new Date().toISOString(),
+    total:        STATS.total || 0,
+    reviewed:     reviewedCount,
+    queue_total:  QUEUE.length,
+    avg_score:    clinScores.length ? Math.round(clinScores.reduce(function(a,b){return a+b;},0)/clinScores.length) : null,
+    ls_total:     lsTotal,
+    ls_justified: lsJust,
+    ls_pct:       lsTotal ? Math.round(lsJust/lsTotal*100) : null,
+    crc_count:    crcCount,
+    compliance_pct: totalDue ? Math.round(onTime/totalDue*100) : null,
+    completion_pct: QUEUE.length ? Math.round(reviewedCount/QUEUE.length*100) : null,
+  };
+
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', SUPABASE_URL + '/rest/v1/qi_periods', false);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_ANON_KEY);
+    xhr.setRequestHeader('Prefer', 'return=minimal');
+    xhr.send(JSON.stringify([snapshot]));
+    console.log('Period snapshot saved: ' + snapshot.period + ' (HTTP ' + xhr.status + ')');
+  } catch(e) {
+    console.warn('Period snapshot save failed:', e.message);
+  }
+}
+
+async function loadPeriodHistory() {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    var res = await fetch(
+      SUPABASE_URL + '/rest/v1/qi_periods?select=*&order=saved_at.desc&limit=6',
+      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
+    );
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+async function initTrending() {
+  var el = document.getElementById('trending-section');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Loading period history...</div>';
+
+  var periods = await loadPeriodHistory();
+  if (!periods.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;font-style:italic;padding:8px">No period history yet — history is saved automatically after each ESO import.</div>';
+    return;
+  }
+
+  // Current period is periods[0], previous is periods[1]
+  var curr = periods[0];
+  var prev = periods.length > 1 ? periods[1] : null;
+
+  function trend(currVal, prevVal, higherIsBetter) {
+    if (currVal === null || currVal === undefined) return '';
+    if (!prev || prevVal === null || prevVal === undefined) return '';
+    var diff = currVal - prevVal;
+    if (diff === 0) return '<span style="color:var(--muted);font-size:11px"> ↔ No change</span>';
+    var good = higherIsBetter ? diff > 0 : diff < 0;
+    var arrow = diff > 0 ? '▲' : '▼';
+    var color = good ? 'var(--green)' : 'var(--red)';
+    return '<span style="color:'+color+';font-size:11px"> '+arrow+' '+Math.abs(diff)+(typeof currVal==='number'&&currVal<=100?'%':'')+'</span>';
+  }
+
+  function statCard(label, currVal, prevVal, higherIsBetter, suffix) {
+    suffix = suffix || '%';
+    var color = currVal >= 90 ? 'var(--green)' : currVal >= 75 ? 'var(--accent)' : currVal >= 60 ? 'var(--yellow)' : 'var(--red)';
+    if (currVal === null || currVal === undefined) color = 'var(--muted)';
+    return '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">'
+      + '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">'+label+'</div>'
+      + '<div style="font-size:22px;font-weight:700;font-family:var(--mono);color:'+color+'">'+(currVal!==null&&currVal!==undefined?currVal+suffix:'N/A')+'</div>'
+      + (prev && prevVal !== null && prevVal !== undefined
+          ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">Prev: '+prevVal+suffix + trend(currVal,prevVal,higherIsBetter)+'</div>'
+          : '<div style="font-size:11px;color:var(--muted);margin-top:2px">No prior period</div>')
+      + '</div>';
+  }
+
+  // Period selector
+  var periodOptions = periods.map(function(p, i) {
+    return '<option value="'+i+'"'+(i===0?' selected':'')+'>'+p.period+'</option>';
+  }).join('');
+
+  var html = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">'
+    + '<div style="font-size:11px;color:var(--muted)">Comparing:</div>'
+    + '<select id="trend-period-sel" onchange="updateTrendDisplay()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px">'+periodOptions+'</select>'
+    + '<div style="font-size:11px;color:var(--muted)">vs previous period</div>'
+    + '</div>'
+    + '<div id="trend-cards" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'
+    + statCard('Avg Clinical Score', curr.avg_score, prev?prev.avg_score:null, true)
+    + statCard('L&S Justified', curr.ls_pct, prev?prev.ls_pct:null, true)
+    + statCard('21-Day Compliance', curr.compliance_pct, prev?prev.compliance_pct:null, true)
+    + statCard('Completion Rate', curr.completion_pct, prev?prev.completion_pct:null, true)
+    + statCard('CRC Rate', curr.queue_total?Math.round(curr.crc_count/curr.queue_total*100):null,
+               prev&&prev.queue_total?Math.round(prev.crc_count/prev.queue_total*100):null, false)
+    + '</div>';
+
+  // Sparkline chart for avg score trend
+  if (periods.length >= 2) {
+    var sparkData = periods.slice().reverse().map(function(p) { return p.avg_score || 0; });
+    var sparkMax = Math.max.apply(null, sparkData) || 100;
+    var sparkMin = Math.min(Math.min.apply(null, sparkData) - 5, 50);
+    var sparkW = 600, sparkH = 60;
+    var pts = sparkData.map(function(v, i) {
+      var x = (i / (sparkData.length-1)) * (sparkW-40) + 20;
+      var y = sparkH - ((v - sparkMin) / (sparkMax - sparkMin)) * (sparkH-10) - 5;
+      return x + ',' + y;
+    }).join(' ');
+    var labels = periods.slice().reverse().map(function(p, i) {
+      var x = (i / (sparkData.length-1)) * (sparkW-40) + 20;
+      var shortPeriod = p.period.split('–')[0].trim().substring(0,6);
+      return '<text x="'+x+'" y="'+(sparkH+12)+'" text-anchor="middle" font-size="9" fill="#8b949e">'+shortPeriod+'</text>'
+        + '<text x="'+x+'" y="'+(sparkH-((sparkData[i]-sparkMin)/(sparkMax-sparkMin))*(sparkH-10)-8)+'" text-anchor="middle" font-size="9" fill="#388bfd">'+(sparkData[i]||'N/A')+'%</text>';
+    }).join('');
+
+    html += '<div style="margin-top:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">'
+      + '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Avg Clinical Score Trend — All Periods</div>'
+      + '<svg viewBox="0 0 '+sparkW+' '+(sparkH+20)+'" style="width:100%;height:80px">'
+      + '<polyline points="'+pts+'" fill="none" stroke="#388bfd" stroke-width="2"/>'
+      + labels
+      + '</svg>'
+      + '</div>';
+  }
+
+  el.innerHTML = html;
+
+  // Store periods globally for selector
+  window._trendPeriods = periods;
+}
+
+function updateTrendDisplay() {
+  var sel = document.getElementById('trend-period-sel');
+  if (!sel || !window._trendPeriods) return;
+  var idx = parseInt(sel.value);
+  var curr = window._trendPeriods[idx];
+  var prev = idx + 1 < window._trendPeriods.length ? window._trendPeriods[idx+1] : null;
+
+  function trend(currVal, prevVal, higherIsBetter) {
+    if (currVal === null || prevVal === null || !prev) return '';
+    var diff = currVal - prevVal;
+    if (diff === 0) return '<span style="color:var(--muted);font-size:11px"> ↔ No change</span>';
+    var good = higherIsBetter ? diff > 0 : diff < 0;
+    return '<span style="color:'+(good?'var(--green)':'var(--red)')+';font-size:11px"> '+(diff>0?'▲':'▼')+' '+Math.abs(diff)+'%</span>';
+  }
+
+  function card(label, currVal, prevVal, higherIsBetter) {
+    var color = currVal >= 90?'var(--green)':currVal>=75?'var(--accent)':currVal>=60?'var(--yellow)':'var(--red)';
+    if (currVal === null) color = 'var(--muted)';
+    return '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px">'
+      +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">'+label+'</div>'
+      +'<div style="font-size:22px;font-weight:700;font-family:var(--mono);color:'+color+'">'+(currVal!==null?currVal+'%':'N/A')+'</div>'
+      +(prev&&prevVal!==null?'<div style="font-size:11px;color:var(--muted);margin-top:2px">Prev: '+prevVal+'%'+trend(currVal,prevVal,higherIsBetter)+'</div>':'')
+      +'</div>';
+  }
+
+  var cards = document.getElementById('trend-cards');
+  if (cards) cards.innerHTML =
+    card('Avg Clinical Score', curr.avg_score, prev?prev.avg_score:null, true)
+    + card('L&S Justified', curr.ls_pct, prev?prev.ls_pct:null, true)
+    + card('21-Day Compliance', curr.compliance_pct, prev?prev.compliance_pct:null, true)
+    + card('Completion Rate', curr.completion_pct, prev?prev.completion_pct:null, true)
+    + card('CRC Rate', curr.queue_total?Math.round(curr.crc_count/curr.queue_total*100):null,
+           prev&&prev.queue_total?Math.round(prev.crc_count/prev.queue_total*100):null, false);
+}
 </script>
 
 <!-- ══════════════════════════════════════════
