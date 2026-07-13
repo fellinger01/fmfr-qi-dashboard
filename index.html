@@ -3745,8 +3745,15 @@ function confirmImport() {
 
   // Save queue to Supabase synchronously so all users get it on next login
   saveQueueToSupabase(queue, stats);
-  savePeriodSnapshot();
   alert('✓ Import complete!\n\n' + queue.length + ' cases loaded.\nPeriod: ' + (stats.date_range||'') + '\n\nNavigate to Overview or Review Queue to begin reviews.');
+  // Save period snapshot after import — delayed to ensure completedReviews is loaded
+  setTimeout(function() {
+    savePeriodSnapshot().then(function() {
+      console.log('Period snapshot complete');
+      // Refresh trending if Overview is visible
+      if (document.getElementById('trending-section')) initTrending();
+    });
+  }, 2000);
 }
 
 
@@ -4734,10 +4741,8 @@ function generateProviderEmail() {
 // ── PERIOD-OVER-PERIOD TRENDING ───────────────────────────────────────────────
 
 async function savePeriodSnapshot() {
-  if (!isSupabaseConfigured()) return;
-  // Compute snapshot from current completedReviews and QUEUE
+  if (!isSupabaseConfigured()) { console.warn('Supabase not configured'); return; }
   var clinScores = [], lsTotal = 0, lsJust = 0, crcCount = 0, reviewedCount = 0;
-  var today = new Date();
   var onTime = 0, totalDue = 0;
 
   QUEUE.forEach(function(c) {
@@ -4752,7 +4757,6 @@ async function savePeriodSnapshot() {
       lsTotal++;
       if (r.ls.findings && !r.ls.findings.escalated) lsJust++;
     }
-    // 21-day compliance
     var p = c.date.split('/');
     var callDate = new Date(p[2], p[0]-1, p[1]);
     var deadline = new Date(callDate); deadline.setDate(deadline.getDate() + 21);
@@ -4766,31 +4770,37 @@ async function savePeriodSnapshot() {
   });
 
   var snapshot = {
-    period:       STATS.date_range || 'Unknown',
-    saved_at:     new Date().toISOString(),
-    total:        STATS.total || 0,
-    reviewed:     reviewedCount,
-    queue_total:  QUEUE.length,
-    avg_score:    clinScores.length ? Math.round(clinScores.reduce(function(a,b){return a+b;},0)/clinScores.length) : null,
-    ls_total:     lsTotal,
-    ls_justified: lsJust,
-    ls_pct:       lsTotal ? Math.round(lsJust/lsTotal*100) : null,
-    crc_count:    crcCount,
+    period:        STATS.date_range || 'Unknown',
+    saved_at:      new Date().toISOString(),
+    total:         STATS.total || 0,
+    reviewed:      reviewedCount,
+    queue_total:   QUEUE.length,
+    avg_score:     clinScores.length ? Math.round(clinScores.reduce(function(a,b){return a+b;},0)/clinScores.length) : null,
+    ls_total:      lsTotal,
+    ls_justified:  lsJust,
+    ls_pct:        lsTotal ? Math.round(lsJust/lsTotal*100) : null,
+    crc_count:     crcCount,
     compliance_pct: totalDue ? Math.round(onTime/totalDue*100) : null,
     completion_pct: QUEUE.length ? Math.round(reviewedCount/QUEUE.length*100) : null,
   };
 
+  console.log('Saving period snapshot:', JSON.stringify(snapshot));
   try {
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', SUPABASE_URL + '/rest/v1/qi_periods', false);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_ANON_KEY);
-    xhr.setRequestHeader('Prefer', 'return=minimal');
-    xhr.send(JSON.stringify([snapshot]));
-    console.log('Period snapshot saved: ' + snapshot.period + ' (HTTP ' + xhr.status + ')');
+    var res = await fetch(SUPABASE_URL + '/rest/v1/qi_periods', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify([snapshot])
+    });
+    var txt = await res.text();
+    console.log('Period snapshot HTTP ' + res.status + ': ' + (txt||'(empty)'));
+    if (!res.ok) console.error('Period snapshot FAILED:', txt);
   } catch(e) {
-    console.warn('Period snapshot save failed:', e.message);
+    console.error('Period snapshot exception:', e.message);
   }
 }
 
